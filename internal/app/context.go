@@ -3,6 +3,7 @@ package app
 import (
 	"fmt"
 
+	"github.com/sl/prompt-builder-agent/internal/config"
 	"github.com/sl/prompt-builder-agent/internal/prompt"
 	"github.com/sl/prompt-builder-agent/internal/selection"
 	"github.com/sl/prompt-builder-agent/internal/storage"
@@ -12,6 +13,7 @@ type AppContext struct {
 	PromptStore storage.PromptStore
 	Builder     prompt.Builder
 	Selection   selection.Provider
+	Config      *config.Config
 }
 
 var GlobalContext *AppContext
@@ -31,10 +33,18 @@ func InitializeContext() error {
 	builder := prompt.NewSimpleBuilder()
 	selectionProvider := selection.NewProvider()
 
+	// Load config (ignore error if not initialized)
+	cfg := &config.Config{}
+	_ = config.Load()
+	if config.AppConfig != nil {
+		cfg = config.AppConfig
+	}
+
 	GlobalContext = &AppContext{
 		PromptStore: store,
 		Builder:     builder,
 		Selection:   selectionProvider,
+		Config:      cfg,
 	}
 
 	return nil

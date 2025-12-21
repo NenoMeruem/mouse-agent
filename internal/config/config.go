@@ -9,8 +9,9 @@ import (
 )
 
 type Config struct {
-	Engines map[string]EngineConfig `mapstructure:"engines"`
-	UI      UIConfig                `mapstructure:"ui"`
+	Engines  map[string]EngineConfig `mapstructure:"engines"`
+	UI       UIConfig                `mapstructure:"ui"`
+	Triggers TriggerConfig           `mapstructure:"triggers"`
 }
 
 type EngineConfig struct {
@@ -20,6 +21,13 @@ type EngineConfig struct {
 
 type UIConfig struct {
 	Output string `mapstructure:"output"`
+}
+
+type TriggerConfig struct {
+	Enabled       bool                   `mapstructure:"enabled"`
+	DefaultPrompt string                 `mapstructure:"default_prompt"`
+	Hotkeys       map[string]string      `mapstructure:"hotkeys"` // hotkey -> prompt_id
+	Mouse         map[string]interface{} `mapstructure:"mouse"`
 }
 
 var AppConfig *Config

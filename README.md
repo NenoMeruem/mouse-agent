@@ -40,6 +40,18 @@ Phase 3 features:
 - ✅ Prompt builder - Merge template with data
 - ✅ Unit tests for builder and variable extraction
 
+## Phase 4 - Trigger System ✅
+
+Phase 4 features:
+- ✅ Trigger interface for extensible trigger system
+- ✅ Hotkey trigger support (MVP via external daemon)
+- ✅ Mouse trigger interface design (Phase 5+)
+- ✅ Trigger Manager for multi-trigger orchestration
+- ✅ Daemon command for running triggers in background
+- ✅ Configuration support for hotkey mappings
+- ✅ macOS skhd integration guide
+- ✅ Linux sxhkd integration guide
+
 ## Installation
 
 ### Build from source
@@ -142,11 +154,32 @@ Preview mode (dry-run):
 ./prompt-agent run explain_code --dry-run
 ```
 
+### Hotkey Triggers (Phase 4)
+
+Configure hotkeys to run prompts without opening terminal:
+
+**For macOS (recommended):**
+
+1. Install skhd: `brew install skhd`
+2. Add to `~/.skhdrc`:
+   ```
+   alt + space : prompt-agent run explain_code
+   ```
+3. Start: `brew services start skhd`
+
+**For Linux (sxhkd):**
+
+1. Install: `sudo apt-get install sxhkd`
+2. Add to `~/.config/sxhkd/sxhkdrc`
+3. Start: `sxhkd &`
+
+See [PHASE4_TRIGGER_SETUP.md](./PHASE4_TRIGGER_SETUP.md) for detailed setup guide.
+
 ### Check version
 
 ```bash
 ./prompt-agent version
-```
+````
 
 ### View available commands
 
@@ -168,6 +201,12 @@ engines:
     model: "gpt-4-mini"
 ui:
   output: "stdout"
+triggers:
+  enabled: true
+  default_prompt: explain_code
+  hotkeys:
+    alt+space: explain_code
+    alt+shift+space: code_review
 ```
 
 ## Database
@@ -208,7 +247,8 @@ prompt-agent/
 │  │  ├─ prompt_show.go       # Show prompt details command
 │  │  ├─ prompt_delete.go     # Delete prompt command
 │  │  ├─ run.go               # Run prompt command
-│  │  └─ run_handler.go       # Run command logic
+│  │  ├─ run_handler.go       # Run command logic
+│  │  └─ daemon.go            # Trigger daemon command
 │  ├─ config/
 │  │  └─ config.go            # Config loading with Viper
 │  ├─ storage/
@@ -218,19 +258,28 @@ prompt-agent/
 │  │  ├─ builder.go           # Prompt template builder
 │  │  ├─ variables.go         # Variable extraction
 │  │  └─ prompt_test.go       # Unit tests
-│  └─ selection/
-│     ├─ provider.go          # Selection interface
-│     ├─ macos.go             # macOS pbpaste implementation
-│     ├─ linux.go             # Linux xclip implementation
-│     ├─ windows.go           # Windows Get-Clipboard implementation
-│     └─ factory.go           # OS-specific provider factory
+│  ├─ selection/
+│  │  ├─ provider.go          # Selection interface
+│  │  ├─ macos.go             # macOS pbpaste implementation
+│  │  ├─ linux.go             # Linux xclip implementation
+│  │  ├─ windows.go           # Windows Get-Clipboard implementation
+│  │  └─ factory.go           # OS-specific provider factory
+│  ├─ app/
+│  │  └─ context.go           # App context management
+│  └─ trigger/
+│     ├─ trigger.go           # Trigger interface
+│     ├─ manager.go           # Trigger manager
+│     ├─ hotkey.go            # Hotkey trigger implementation
+│     └─ mouse.go             # Mouse trigger design (Phase 5+)
 ├─ pkg/
 │  └─ models/
 │     └─ prompt.go            # Prompt model
 ├─ go.mod
 ├─ go.sum
 ├─ prompt-agent               # Compiled binary
-└─ README.md
+├─ README.md
+├─ PHASE4_TRIGGER_SETUP.md    # Trigger setup guide
+└─ PHASE2_SUMMARY.md          # Phase 2 summary
 ```
 
 ## Architecture
@@ -279,18 +328,46 @@ Phase 3 provides full end-to-end capability:
 3. Run prompt with `./prompt-agent run <id>`
 4. View filled template
 
-## Next Steps (Phase 4+)
+## Next Steps (Phase 5+)
 
-- [ ] LLM API integration (OpenAI, Gemini, Claude)
-- [ ] `prompt run --send` to send to LLM
-- [ ] Result formatting and syntax highlighting
-- [ ] Prompt templates library / marketplace
-- [ ] History tracking
-- [ ] Custom filters and processors
+Phase 4 is complete with trigger infrastructure. Next phases:
+
+- [ ] **Phase 5**: Mouse trigger integration (middle-click context menu)
+- [ ] **Phase 5**: Improved selection (Accessibility API on macOS)
+- [ ] **Phase 6**: LLM API integration (OpenAI, Gemini, Claude)
+- [ ] **Phase 6**: `prompt run --send` to send to LLM with streaming
+- [ ] **Phase 7**: Result formatting and syntax highlighting
+- [ ] **Phase 7**: Prompt templates library / marketplace
+- [ ] **Phase 8**: History tracking and prompt versioning
+- [ ] **Phase 8**: Custom filters and processors
+
+## Development Guide
+
+### Building
+
+```bash
+go build -o prompt-agent ./cmd/prompt-agent
+```
+
+### Testing
+
+```bash
+go test ./...
+```
+
+### Running with Custom Path
+
+```bash
+./prompt-agent init  # Creates ~/.prompt-agent/
+```
 
 ---
 
-**Status**: Phase 1-3 complete ✅
+**Status**: Phase 1-4 complete ✅
+- Phase 1: CLI Skeleton ✅
+- Phase 2: Prompt System ✅  
+- Phase 3: Selection & Execution ✅
+- Phase 4: Trigger System ✅
 
 - Phase 1: CLI Skeleton - Complete
 - Phase 2: Prompt System - Complete  
