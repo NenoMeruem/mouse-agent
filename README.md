@@ -52,6 +52,22 @@ Phase 4 features:
 - ✅ macOS skhd integration guide
 - ✅ Linux sxhkd integration guide
 
+## Phase 5 - Selection Text & Run Pipeline ✅
+
+Phase 5 features:
+- ✅ Selection Manager for OS-specific clipboard access
+- ✅ macOS clipboard provider (pbpaste) fully working
+- ✅ Linux/Windows provider stubs with clear interfaces
+- ✅ Enhanced run command with complete pipeline
+- ✅ Variable validation before prompt building
+- ✅ Environment variable support (`PROMPT_*`)
+- ✅ Interactive variable input fallback
+- ✅ Formatted and raw output modes
+- ✅ Graceful error handling with user-friendly messages
+- ✅ Output renderer abstraction for future extensibility
+- ✅ `--no-select` flag for default-only execution
+- ✅ End-to-end trigger → selection → run pipeline
+
 ## Installation
 
 ### Build from source

@@ -6,6 +6,10 @@ import "errors"
 
 type WindowsProvider struct{}
 
+func (p *WindowsProvider) Name() string {
+	return "Windows"
+}
+
 func (p *WindowsProvider) Get() (string, error) {
 	return "", errors.New("selection provider not implemented for Windows yet")
 }

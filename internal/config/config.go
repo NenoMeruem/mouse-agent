@@ -9,9 +9,10 @@ import (
 )
 
 type Config struct {
-	Engines  map[string]EngineConfig `mapstructure:"engines"`
-	UI       UIConfig                `mapstructure:"ui"`
-	Triggers TriggerConfig           `mapstructure:"triggers"`
+	Engines   map[string]EngineConfig `mapstructure:"engines"`
+	UI        UIConfig                `mapstructure:"ui"`
+	Triggers  TriggerConfig           `mapstructure:"triggers"`
+	Selection SelectionConfig         `mapstructure:"selection"`
 }
 
 type EngineConfig struct {
@@ -28,6 +29,12 @@ type TriggerConfig struct {
 	DefaultPrompt string                 `mapstructure:"default_prompt"`
 	Hotkeys       map[string]string      `mapstructure:"hotkeys"` // hotkey -> prompt_id
 	Mouse         map[string]interface{} `mapstructure:"mouse"`
+}
+
+type SelectionConfig struct {
+	Provider             string `mapstructure:"provider"` // auto, macos, linux, windows
+	FailOnEmptySelection bool   `mapstructure:"fail_on_empty_selection"`
+	TrimWhitespace       bool   `mapstructure:"trim_whitespace"`
 }
 
 var AppConfig *Config

@@ -11,6 +11,10 @@ import (
 
 type MacOSProvider struct{}
 
+func (p *MacOSProvider) Name() string {
+	return "macOS"
+}
+
 func (p *MacOSProvider) Get() (string, error) {
 	cmd := exec.Command("pbpaste")
 	var out bytes.Buffer
