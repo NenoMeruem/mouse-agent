@@ -1,0 +1,19 @@
+# Ignore build outputs
+prompt-agent
+*.exe
+*.dll
+*.so
+*.dylib
+
+# IDE
+.vscode/
+.idea/
+*.swp
+*.swo
+*~
+
+# Dependencies
+vendor/
+
+# OS
+.DS_Store
