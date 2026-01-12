@@ -4,7 +4,6 @@ import (
 	"fmt"
 
 	"github.com/sl/prompt-builder-agent/internal/config"
-	"github.com/sl/prompt-builder-agent/internal/output"
 	"github.com/sl/prompt-builder-agent/internal/prompt"
 	"github.com/sl/prompt-builder-agent/internal/selection"
 	"github.com/sl/prompt-builder-agent/internal/storage"
@@ -14,7 +13,6 @@ type AppContext struct {
 	PromptStore      storage.PromptStore
 	Builder          prompt.Builder
 	SelectionManager *selection.Manager
-	Renderer         output.Renderer
 	Config           *config.Config
 }
 
@@ -35,7 +33,6 @@ func InitializeContext() error {
 	builder := prompt.NewSimpleBuilder()
 	selectionProvider := selection.NewProvider()
 	selectionManager := selection.NewManager(selectionProvider)
-	renderer := output.NewStdoutRenderer(true)
 
 	// Load config (ignore error if not initialized)
 	cfg := &config.Config{}
@@ -48,7 +45,6 @@ func InitializeContext() error {
 		PromptStore:      store,
 		Builder:          builder,
 		SelectionManager: selectionManager,
-		Renderer:         renderer,
 		Config:           cfg,
 	}
 

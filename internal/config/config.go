@@ -4,6 +4,7 @@ import (
 	"fmt"
 	"os"
 	"path/filepath"
+	"time"
 
 	"github.com/spf13/viper"
 )
@@ -16,8 +17,9 @@ type Config struct {
 }
 
 type EngineConfig struct {
-	APIKey string `mapstructure:"api_key"`
-	Model  string `mapstructure:"model"`
+	APIKey  string        `mapstructure:"api_key"`
+	Model   string        `mapstructure:"model"`
+	Timeout time.Duration `mapstructure:"timeout"`
 }
 
 type UIConfig struct {
@@ -67,6 +69,16 @@ func Load() error {
 	var cfg Config
 	if err := viper.Unmarshal(&cfg); err != nil {
 		return err
+	}
+
+	// Set default timeout only if not specified
+	// Note: timeout can be 0 if not in config, so just ensure all engines have valid timeout
+	for engine, engineCfg := range cfg.Engines {
+		if engineCfg.Timeout <= 0 {
+			// Default to 120 seconds (wait for API to respond)
+			engineCfg.Timeout = 120 * time.Second
+		}
+		cfg.Engines[engine] = engineCfg
 	}
 
 	AppConfig = &cfg

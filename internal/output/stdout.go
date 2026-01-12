@@ -2,33 +2,43 @@ package output
 
 import (
 	"fmt"
-	"strings"
+
+	"github.com/sl/prompt-builder-agent/internal/llm"
 )
 
-type Renderer interface {
-	Render(title, content string) error
-}
-
-type StdoutRenderer struct {
+// StdoutStreamRenderer renders streaming output to stdout
+type StdoutStreamRenderer struct {
 	formatted bool
 }
 
-func NewStdoutRenderer(formatted bool) *StdoutRenderer {
-	return &StdoutRenderer{
-		formatted: formatted,
+// NewStdoutStreamRenderer creates a new stdout streaming renderer
+func NewStdoutStreamRenderer() *StdoutStreamRenderer {
+	return &StdoutStreamRenderer{
+		formatted: true,
 	}
 }
 
-func (r *StdoutRenderer) Render(title, content string) error {
-	if r.formatted {
-		separator := strings.Repeat("=", len(title)+4)
-		fmt.Println(separator)
-		fmt.Println("  " + title)
-		fmt.Println(separator)
-		fmt.Println(content)
-		fmt.Println(separator)
-	} else {
-		fmt.Println(content)
+// RenderStream implements StreamRenderer interface
+func (r *StdoutStreamRenderer) RenderStream(ch <-chan llm.Chunk) error {
+	first := true
+	for chunk := range ch {
+		if chunk.Err != nil {
+			fmt.Printf("❌ Error: %v\n", chunk.Err)
+			return chunk.Err
+		}
+
+		if chunk.Done {
+			fmt.Println("\n✓ Done")
+			return nil
+		}
+
+		if chunk.Text != "" {
+			if first {
+				fmt.Print("🤖 AI: ")
+				first = false
+			}
+			fmt.Print(chunk.Text)
+		}
 	}
 	return nil
 }
