@@ -4,6 +4,7 @@ import (
 	"fmt"
 	"os/exec"
 	"strings"
+	"time"
 
 	"github.com/charmbracelet/bubbles/viewport"
 	tea "github.com/charmbracelet/bubbletea"
@@ -54,6 +55,7 @@ func (r *TUIRenderer) RenderStream(ch <-chan llm.Chunk) error {
 type chunkMsg string
 type doneMsg struct{}
 type errorMsg error
+type tickMsg time.Time
 
 // Model for Bubbletea
 type tuiModel struct {
@@ -63,6 +65,8 @@ type tuiModel struct {
 	err        error
 	copied     bool
 	copyStatus string
+	loading    bool
+	spinner    int
 }
 
 // newModel creates a new TUI model
@@ -79,13 +83,22 @@ func newModel() tuiModel {
 
 // Init implements tea.Model
 func (m tuiModel) Init() tea.Cmd {
+	// Start loading animation if no content
+	if m.content == "" {
+		return tea.Tick(time.Millisecond*100, func(t time.Time) tea.Msg {
+			return tickMsg(t)
+		})
+	}
 	return nil
 }
 
 // Update implements tea.Model
 func (m tuiModel) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
+	var cmd tea.Cmd
+
 	switch msg := msg.(type) {
 	case tea.KeyMsg:
+		// Handle scroll keys - delegate to viewport first
 		switch msg.String() {
 		case "q", "ctrl+c":
 			return m, tea.Quit
@@ -102,34 +115,80 @@ func (m tuiModel) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 				m.copyStatus = "❌ No content to copy"
 			}
 			return m, nil
+		case "up", "k":
+			m.viewport.LineUp(1)
+			return m, nil
+		case "down", "j":
+			m.viewport.LineDown(1)
+			return m, nil
+		case "pgup":
+			m.viewport.ViewUp()
+			return m, nil
+		case "pgdown", " ":
+			m.viewport.ViewDown()
+			return m, nil
+		case "home", "g":
+			m.viewport.GotoTop()
+			return m, nil
+		case "end", "G":
+			m.viewport.GotoBottom()
+			return m, nil
+		default:
+			// Let viewport handle other keys
+			m.viewport, cmd = m.viewport.Update(msg)
+			return m, cmd
 		}
 
 	case tea.WindowSizeMsg:
+		// Recalculate viewport dimensions accounting for header and footer
+		headerHeight := 2
+		footerHeight := 2
+		if m.copyStatus != "" {
+			footerHeight += 2
+		}
 		m.viewport.Width = msg.Width - 4
-		m.viewport.Height = msg.Height - 4
+		m.viewport.Height = msg.Height - headerHeight - footerHeight - 2
+		return m, nil
+
+	case tickMsg:
+		// Loading animation tick
+		if m.content == "" && !m.done && m.err == nil {
+			m.loading = true
+			m.spinner = (m.spinner + 1) % 4
+			return m, tea.Tick(time.Millisecond*100, func(t time.Time) tea.Msg {
+				return tickMsg(t)
+			})
+		}
+		return m, nil
 
 	case chunkMsg:
 		m.content += string(msg)
+		m.loading = false
 		m.viewport.SetContent(formatMarkdown(m.content))
+		// Auto-scroll to bottom when new content arrives
+		m.viewport.GotoBottom()
 		// Reset copy status when new content arrives
 		if m.copied {
 			m.copied = false
 			m.copyStatus = ""
 		}
+		return m, nil
 
 	case doneMsg:
 		m.done = true
+		m.loading = false
 		// Don't quit immediately - let user read the output and press 'q' to exit
 		return m, nil
 
 	case errorMsg:
 		m.err = error(msg)
+		m.loading = false
 		m.viewport.SetContent(fmt.Sprintf("Error: %v", m.err))
 		// Don't quit immediately - let user read the error and press 'q' to exit
 		return m, nil
 	}
 
-	return m, nil
+	return m, cmd
 }
 
 // View implements tea.Model
@@ -143,6 +202,13 @@ func (m tuiModel) View() string {
 		status = lipgloss.NewStyle().
 			Foreground(lipgloss.Color("1")).
 			Render(fmt.Sprintf("✗ Error: %v", m.err))
+	} else if m.loading && m.content == "" {
+		// Show animated loading spinner
+		spinnerChars := []string{"⠋", "⠙", "⠹", "⠸", "⠼", "⠴", "⠦", "⠧", "⠇", "⠏"}
+		spinner := spinnerChars[m.spinner%len(spinnerChars)]
+		status = lipgloss.NewStyle().
+			Foreground(lipgloss.Color("3")).
+			Render(fmt.Sprintf("%s Waiting for response...", spinner))
 	} else {
 		status = lipgloss.NewStyle().
 			Foreground(lipgloss.Color("3")).
@@ -153,6 +219,25 @@ func (m tuiModel) View() string {
 		Bold(true).
 		Foreground(lipgloss.Color("39")).
 		Render("AI Response")
+
+	// Build viewport content
+	var viewportContent string
+	if m.content == "" && m.loading {
+		// Show loading animation in viewport
+		loadingText := renderLoadingAnimation(m.spinner)
+		m.viewport.SetContent(loadingText)
+		viewportContent = m.viewport.View()
+	} else if m.content == "" {
+		// Show empty state
+		emptyText := lipgloss.NewStyle().
+			Foreground(lipgloss.Color("8")).
+			Italic(true).
+			Render("Waiting for AI response...")
+		m.viewport.SetContent(emptyText)
+		viewportContent = m.viewport.View()
+	} else {
+		viewportContent = m.viewport.View()
+	}
 
 	// Build footer with instructions
 	var footer string
@@ -171,13 +256,37 @@ func (m tuiModel) View() string {
 	// Build instructions based on state
 	var instructions string
 	if m.content != "" {
-		instructions = "Press 'c' to copy | 'q' or Ctrl+C to exit"
+		instructions = "↑↓/PgUp/PgDn/Home/End: scroll | 'c': copy | 'q': quit"
 	} else {
 		instructions = "Press 'q' or Ctrl+C to exit"
 	}
 
 	return fmt.Sprintf("%s %s\n%s\n\n%s%s",
-		header, status, m.viewport.View(), instructions, footer)
+		header, status, viewportContent, instructions, footer)
+}
+
+// renderLoadingAnimation creates a loading animation
+func renderLoadingAnimation(spinnerIdx int) string {
+	spinnerChars := []string{"⠋", "⠙", "⠹", "⠸", "⠼", "⠴", "⠦", "⠧", "⠇", "⠏"}
+	spinnerChar := spinnerChars[spinnerIdx%len(spinnerChars)]
+
+	lines := []string{
+		"",
+		"",
+		lipgloss.NewStyle().
+			Foreground(lipgloss.Color("3")).
+			Bold(true).
+			Render(fmt.Sprintf("  %s  Waiting for AI response...", spinnerChar)),
+		"",
+		lipgloss.NewStyle().
+			Foreground(lipgloss.Color("8")).
+			Italic(true).
+			Render("  This may take a few moments"),
+		"",
+		"",
+	}
+
+	return strings.Join(lines, "\n")
 }
 
 // formatMarkdown applies basic markdown styling to text

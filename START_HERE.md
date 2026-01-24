@@ -71,9 +71,14 @@ echo "world" | pbcopy
 ```bash
 # Create a prompt
 ./prompt-agent prompt add \
-  --id <name> \
-  --template "Your template: {{selection}}" \
-  --engine openai
+  --id read \
+  --template "Bạn là một senior software egnineer. Hãy dịch đoạn văn sau sao cho dễ hiểu: {{selection}}" \
+  --engine gemini
+
+./prompt-agent prompt add \
+  --id exp \
+  --template "Bạn là một senior software egnineer. Hãy phân tích mã code nêu ra các ưu điểm, nhược điểm và gợi ý improve nếu có: {{selection}}" \
+  --engine gemini
 
 # List all prompts
 ./prompt-agent prompt list
