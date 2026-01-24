@@ -53,7 +53,7 @@ func (c *Client) Stream(ctx context.Context, req llm.Request) (<-chan llm.Chunk,
 func (c *Client) stream(ctx context.Context, req llm.Request, ch chan<- llm.Chunk) {
 	// Build request using c.model from config, not hardcoded
 	url := fmt.Sprintf("%s/%s:generateContent?key=%s", c.baseURL, c.model, c.apiKey)
-	
+
 	fmt.Fprintf(os.Stderr, "DEBUG: Gemini URL=%s, timeout=%v\n", url[:len(url)-len(c.apiKey)-4]+"KEY", c.timeout)
 
 	payload := map[string]interface{}{
@@ -93,7 +93,7 @@ func (c *Client) stream(ctx context.Context, req llm.Request, ch chan<- llm.Chun
 		Timeout:   c.timeout, // Use full timeout (120s from config)
 		Transport: transport,
 	}
-	
+
 	fmt.Fprintf(os.Stderr, "DEBUG: Starting request with timeout=%v\n", client.Timeout)
 
 	resp, err := client.Do(httpReq)

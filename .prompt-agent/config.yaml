@@ -16,8 +16,8 @@ engines:
 
 # UI Configuration
 ui:
-  output: stdout                       # Options: "stdout" or "tui"
-  # output: tui                        # Use TUI for prettier output
+  output: tui                          # Options: "stdout" or "tui"
+  # output: stdout                     # Use stdout for plain text output
 
 # Trigger Configuration
 triggers:

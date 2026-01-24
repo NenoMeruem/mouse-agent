@@ -147,6 +147,7 @@ func runWithLLM(prompt, engine string) error {
 
 	// Render output
 	outputType := getConfigValue("ui_output", "stdout")
+	fmt.Fprintf(os.Stderr, "DEBUG: outputType=%q\n", outputType)
 	factory := output.NewFactory(outputType)
 	renderer := factory.CreateRenderer()
 
