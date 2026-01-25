@@ -24,5 +24,3 @@ type MouseTriggerConfig struct {
 // macOS: Karabiner or CGEventTap (cgo)
 // Linux: X11 event listening
 // Windows: Mouse hook DLL
-//
-// Phase 4 just defines the interface to prepare for future implementation

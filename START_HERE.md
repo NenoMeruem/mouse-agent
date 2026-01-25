@@ -253,7 +253,6 @@ done
 |-----------|------|
 | Build | ~5 seconds |
 | Create prompt | <1 second |
-| Dry-run | ~100ms |
 | With API | 1-3 seconds |
 | Cancel (Ctrl+C) | Instant |
 
@@ -269,8 +268,6 @@ done
 ✅ **Streaming**: Real-time response rendering  
 ✅ **Timeout**: Configurable request timeout  
 ✅ **Error Handling**: Comprehensive error messages  
-✅ **Dry-run**: Preview without API calls  
-✅ **Cancel**: Ctrl+C stops mid-stream  
 
 ---
 
@@ -322,8 +319,6 @@ Evening:
 |-----|--------|
 | Cmd+C | Copy to clipboard |
 | Cmd+V | Paste from clipboard |
-| Ctrl+C | Cancel streaming |
-| Ctrl+D | Exit |
 
 ---
 
@@ -331,9 +326,7 @@ Evening:
 
 | Engine | Status | Speed | Notes |
 |--------|--------|-------|-------|
-| OpenAI | ✅ | Fast | Streaming SSE |
 | Gemini | ✅ | Medium | Single response |
-| Claude | 🔜 | - | Phase 7 |
 | Local | 🔜 | - | Phase 8 |
 
 ---
@@ -355,11 +348,6 @@ Evening:
 # Copy: "Code: def hello(): print('hi')"
 ./prompt-agent run explain
 # AI knows it's code and explains better
-```
-
-**Tip 2**: Use date in templates for logging
-```bash
---template "[{{date}}] Issue: {{selection}}"
 ```
 
 **Tip 3**: Combine with grep for batch processing
@@ -414,18 +402,3 @@ echo "Explain machine learning" | pbcopy
 **Happy coding! 🚀**
 
 ---
-
-## 📚 Documentation Files
-
-- [QUICK_REFERENCE.md](QUICK_REFERENCE.md) - Commands at a glance
-- [USAGE_GUIDE.md](USAGE_GUIDE.md) - Complete guide (Tiếng Việt + EN)
-- [VISUAL_GUIDE.md](VISUAL_GUIDE.md) - Diagrams and flows
-- [DOCUMENTATION_INDEX.md](DOCUMENTATION_INDEX.md) - All docs
-- [PHASE6_QUICK_START.md](PHASE6_QUICK_START.md) - Architecture
-- [GEMINI_REAL_TEST_SETUP.md](GEMINI_REAL_TEST_SETUP.md) - Gemini setup
-
----
-
-**Version**: Phase 6 Complete  
-**Status**: ✅ Production Ready  
-**Last Updated**: January 10, 2026
