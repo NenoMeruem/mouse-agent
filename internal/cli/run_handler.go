@@ -88,6 +88,19 @@ func runPromptCommand(cmd *cobra.Command, args []string) error {
 		return nil
 	}
 
+	// Preview and optionally edit prompt before sending
+	if promptDef.Engine != "" && promptDef.Engine != "none" {
+		editedPrompt, confirmed, err := PromptEditor(finalPrompt)
+		if err != nil {
+			return fmt.Errorf("❌ editor error: %w", err)
+		}
+		if !confirmed {
+			fmt.Println("❌ Cancelled by user")
+			return nil
+		}
+		finalPrompt = editedPrompt
+	}
+
 	// Stream to LLM if engine is specified
 	if promptDef.Engine != "" && promptDef.Engine != "none" {
 		return runWithLLM(finalPrompt, promptDef.Engine)
