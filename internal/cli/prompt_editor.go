@@ -158,7 +158,6 @@ func (m promptEditorModel) View() string {
 		}
 		s.WriteString(help)
 
-
 	case "confirm":
 		// Confirm mode
 		info := lipgloss.NewStyle().

@@ -1,3 +1,5 @@
+// Package config handles loading and managing application configuration.
+// Configuration can come from YAML files or environment variables.
 package config
 
 import (
@@ -7,6 +9,15 @@ import (
 	"time"
 
 	"github.com/spf13/viper"
+)
+
+// Default configuration values - single source of truth for defaults
+const (
+	DefaultOpenAIModel       = "gpt-4-mini"
+	DefaultGeminiModel       = "gemini-2.5-flash-lite"
+	DefaultTimeout           = 120 * time.Second // Timeout for API requests
+	DefaultUIOutput          = "stdout"
+	DefaultSelectionProvider = "auto"
 )
 
 type Config struct {
@@ -61,7 +72,7 @@ func Load() error {
 		}
 		AppConfig = &Config{
 			Engines: make(map[string]EngineConfig),
-			UI:      UIConfig{Output: "stdout"},
+			UI:      UIConfig{Output: DefaultUIOutput},
 		}
 		return nil
 	}
@@ -71,16 +82,56 @@ func Load() error {
 		return err
 	}
 
-	// Set default timeout only if not specified
-	// Note: timeout can be 0 if not in config, so just ensure all engines have valid timeout
+	// Ensure all engines have valid timeout
 	for engine, engineCfg := range cfg.Engines {
 		if engineCfg.Timeout <= 0 {
-			// Default to 120 seconds (wait for API to respond)
-			engineCfg.Timeout = 120 * time.Second
+			engineCfg.Timeout = DefaultTimeout
 		}
 		cfg.Engines[engine] = engineCfg
 	}
 
+	// Apply defaults for UI output if not specified
+	if cfg.UI.Output == "" {
+		cfg.UI.Output = DefaultUIOutput
+	}
+
 	AppConfig = &cfg
 	return nil
+}
+
+// GetEngineModel returns the model for the given engine, falling back to defaults.
+func GetEngineModel(engine string) string {
+	if AppConfig != nil && AppConfig.Engines != nil {
+		if cfg, ok := AppConfig.Engines[engine]; ok && cfg.Model != "" {
+			return cfg.Model
+		}
+	}
+
+	// Return engine-specific defaults
+	switch engine {
+	case "openai":
+		return DefaultOpenAIModel
+	case "gemini":
+		return DefaultGeminiModel
+	default:
+		return DefaultOpenAIModel
+	}
+}
+
+// GetEngineTimeout returns the timeout for the given engine, falling back to default.
+func GetEngineTimeout(engine string) time.Duration {
+	if AppConfig != nil && AppConfig.Engines != nil {
+		if cfg, ok := AppConfig.Engines[engine]; ok && cfg.Timeout > 0 {
+			return cfg.Timeout
+		}
+	}
+	return DefaultTimeout
+}
+
+// GetUIOutput returns the UI output type, falling back to default.
+func GetUIOutput() string {
+	if AppConfig != nil && AppConfig.UI.Output != "" {
+		return AppConfig.UI.Output
+	}
+	return DefaultUIOutput
 }

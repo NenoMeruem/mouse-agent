@@ -1,3 +1,4 @@
+// Package gemini provides a Google Gemini API client with streaming support.
 package gemini
 
 import (
@@ -7,13 +8,14 @@ import (
 	"fmt"
 	"io"
 	"net/http"
-	"os"
 	"time"
 
 	"github.com/sl/prompt-builder-agent/internal/llm"
 )
 
-// Client is a Google Gemini API client
+// Client implements the llm.Client interface for Google Gemini's API.
+// It communicates with the Generative Language API using Authorization headers
+// for security (not URL parameters).
 type Client struct {
 	apiKey  string
 	model   string
@@ -21,7 +23,7 @@ type Client struct {
 	baseURL string
 }
 
-// NewClient creates a new Gemini client
+// NewClient creates a new Gemini client with the given API key and model.
 func NewClient(apiKey string, model string, timeout time.Duration) *Client {
 	return &Client{
 		apiKey:  apiKey,
@@ -51,10 +53,8 @@ func (c *Client) Stream(ctx context.Context, req llm.Request) (<-chan llm.Chunk,
 
 // stream handles the Gemini API call with streaming
 func (c *Client) stream(ctx context.Context, req llm.Request, ch chan<- llm.Chunk) {
-	// Build request using c.model from config, not hardcoded
-	url := fmt.Sprintf("%s/%s:generateContent?key=%s", c.baseURL, c.model, c.apiKey)
-
-	fmt.Fprintf(os.Stderr, "DEBUG: Gemini URL=%s, timeout=%v\n", url[:len(url)-len(c.apiKey)-4]+"KEY", c.timeout)
+	// Build request URL (API key secured via Authorization header)
+	url := fmt.Sprintf("%s/%s:generateContent", c.baseURL, c.model)
 
 	payload := map[string]interface{}{
 		"contents": []map[string]interface{}{
@@ -72,29 +72,27 @@ func (c *Client) stream(ctx context.Context, req llm.Request, ch chan<- llm.Chun
 		return
 	}
 
-	// Don't use context here - let http.Client.Timeout handle it
-	// Using context can conflict with signal.NotifyContext from run_handler
-	httpReq, err := http.NewRequest("POST", url, bytes.NewReader(body))
+	// Use provided context for proper cancellation support
+	httpReq, err := http.NewRequestWithContext(ctx, "POST", url, bytes.NewReader(body))
 	if err != nil {
 		ch <- llm.Chunk{Err: fmt.Errorf("failed to create request: %w", err), Done: true}
 		return
 	}
 
+	// Set headers: use Authorization header instead of URL parameter for security
 	httpReq.Header.Set("Content-Type", "application/json")
+	httpReq.Header.Set("Authorization", fmt.Sprintf("Bearer %s", c.apiKey))
 
 	// Create HTTP client with timeout
-	// Note: Don't use ResponseHeaderTimeout as it can be too strict
 	transport := &http.Transport{
 		DisableKeepAlives:   false,
 		MaxIdleConnsPerHost: 10,
 	}
 
 	client := &http.Client{
-		Timeout:   c.timeout, // Use full timeout (120s from config)
+		Timeout:   c.timeout,
 		Transport: transport,
 	}
-
-	fmt.Fprintf(os.Stderr, "DEBUG: Starting request with timeout=%v\n", client.Timeout)
 
 	resp, err := client.Do(httpReq)
 	if err != nil {

@@ -8,7 +8,6 @@ import (
 	"os/signal"
 	"strings"
 	"syscall"
-	"time"
 
 	"github.com/sl/prompt-builder-agent/internal/app"
 	"github.com/sl/prompt-builder-agent/internal/config"
@@ -20,6 +19,11 @@ import (
 	"github.com/spf13/cobra"
 )
 
+// runPromptCommand orchestrates the full prompt execution flow:
+// 1. Load prompt definition
+// 2. Collect input data (selection + user variables)
+// 3. Build the final prompt
+// 4. Send to LLM and render response
 func runPromptCommand(cmd *cobra.Command, args []string) error {
 	id := args[0]
 
@@ -29,7 +33,7 @@ func runPromptCommand(cmd *cobra.Command, args []string) error {
 		return fmt.Errorf("❌ prompt not found: %s", id)
 	}
 
-	// Build data map for template
+	// Collect input data for template substitution
 	data := map[string]string{}
 
 	// Get selection from clipboard (unless --no-select is set)
@@ -41,36 +45,12 @@ func runPromptCommand(cmd *cobra.Command, args []string) error {
 		data["selection"] = selectionText
 	}
 
-	// Collect missing variables from environment or user input
-	reader := bufio.NewReader(os.Stdin)
-	for _, varName := range promptDef.Variables {
-		if _, ok := data[varName]; !ok {
-			// Try environment variable first
-			envKey := "PROMPT_" + strings.ToUpper(varName)
-			if envValue := os.Getenv(envKey); envValue != "" {
-				data[varName] = envValue
-			} else if noSelection && varName == "selection" {
-				// Skip if --no-select and variable is selection
-				continue
-			} else {
-				// Ask user interactively
-				fmt.Printf("Enter %s: ", varName)
-				value, _ := reader.ReadString('\n')
-				value = strings.TrimSpace(value)
-				if value == "" {
-					return fmt.Errorf("❌ missing required variable: %s", varName)
-				}
-				data[varName] = value
-			}
-		}
-	}
-
-	// Validate all required variables are present
-	if err := promptlib.ValidateVariables(promptDef.Variables, data); err != nil {
+	// Prompt user for any missing variables from prompt definition
+	if err := collectMissingVariables(promptDef.Variables, data); err != nil {
 		return fmt.Errorf("❌ %w", err)
 	}
 
-	// Build final prompt
+	// Build the final prompt from template
 	finalPrompt, err := app.GlobalContext.Builder.Build(
 		promptDef.Template,
 		data,
@@ -79,7 +59,7 @@ func runPromptCommand(cmd *cobra.Command, args []string) error {
 		return fmt.Errorf("❌ cannot build prompt: %w", err)
 	}
 
-	// If dry-run, just show the prompt
+	// If dry-run, just preview the prompt without API call
 	if dryRun {
 		fmt.Printf("🔍 DRY RUN - Final Prompt:\n%s\n", finalPrompt)
 		if !rawOutput {
@@ -88,7 +68,7 @@ func runPromptCommand(cmd *cobra.Command, args []string) error {
 		return nil
 	}
 
-	// Preview and optionally edit prompt before sending
+	// Allow user to review and edit the prompt before sending
 	if promptDef.Engine != "" && promptDef.Engine != "none" {
 		editedPrompt, confirmed, err := PromptEditor(finalPrompt)
 		if err != nil {
@@ -101,43 +81,67 @@ func runPromptCommand(cmd *cobra.Command, args []string) error {
 		finalPrompt = editedPrompt
 	}
 
-	// Stream to LLM if engine is specified
+	// Send to LLM if engine is specified
 	if promptDef.Engine != "" && promptDef.Engine != "none" {
 		return runWithLLM(finalPrompt, promptDef.Engine)
 	}
 
-	// Fallback: show prompt without LLM
+	// Fallback: show prompt without LLM call
 	fmt.Printf("🤖 Prompt:\n%s\n", finalPrompt)
 	return nil
 }
 
-// runWithLLM sends the prompt to an LLM with streaming output
+// collectMissingVariables prompts user for any variables not yet provided.
+// It tries environment variables first, then asks user interactively.
+func collectMissingVariables(requiredVars []string, data map[string]string) error {
+	reader := bufio.NewReader(os.Stdin)
+
+	for _, varName := range requiredVars {
+		if _, ok := data[varName]; ok {
+			continue // Already have this variable from selection
+		}
+
+		// Try environment variable first
+		envKey := "PROMPT_" + strings.ToUpper(varName)
+		if envValue := os.Getenv(envKey); envValue != "" {
+			data[varName] = envValue
+			continue
+		}
+
+		// Skip selection variable if --no-select was used
+		if noSelection && varName == "selection" {
+			continue
+		}
+
+		// Ask user interactively
+		fmt.Printf("Enter %s: ", varName)
+		value, _ := reader.ReadString('\n')
+		value = strings.TrimSpace(value)
+		if value == "" {
+			return fmt.Errorf("missing required variable: %s", varName)
+		}
+		data[varName] = value
+	}
+
+	// Validate all required variables are present
+	return promptlib.ValidateVariables(requiredVars, data)
+}
+
+// runWithLLM sends the prompt to an LLM engine and renders the streamed response.
+// It handles setting up the correct LLM client, managing context cancellation,
+// and rendering output according to user preferences.
 func runWithLLM(prompt, engine string) error {
-	// Initialize LLM manager
+	// Initialize LLM manager and register available engines
 	llmMgr := llm.NewManager()
+	registerAvailableEngines(llmMgr)
 
-	// Register providers based on configuration
-	if apiKey := os.Getenv("OPENAI_API_KEY"); apiKey != "" {
-		model := getConfigValue("openai_model", "gpt-4-mini")
-		timeout := getTimeoutFromConfig("openai")
-		fmt.Fprintf(os.Stderr, "DEBUG: OpenAI timeout=%v\n", timeout)
-		llmMgr.Register("openai", openai.NewClient(apiKey, model, timeout))
-	}
-
-	if apiKey := os.Getenv("GEMINI_API_KEY"); apiKey != "" {
-		model := getConfigValue("gemini_model", "gemini-2.5-flash-lite")
-		timeout := getTimeoutFromConfig("gemini")
-		fmt.Fprintf(os.Stderr, "DEBUG: Gemini timeout=%v, apiKey=%v\n", timeout, apiKey[:10]+"...")
-		llmMgr.Register("gemini", gemini.NewClient(apiKey, model, timeout))
-	}
-
-	// Get the LLM client
+	// Get the LLM client for requested engine
 	client, err := llmMgr.Get(engine)
 	if err != nil {
 		return fmt.Errorf("❌ %w", err)
 	}
 
-	// Create cancellable context
+	// Create cancellable context (Ctrl+C support)
 	ctx, cancel := signal.NotifyContext(
 		context.Background(),
 		os.Interrupt,
@@ -148,22 +152,18 @@ func runWithLLM(prompt, engine string) error {
 	// Create LLM request
 	req := llm.Request{
 		Prompt: prompt,
-		Model:  getConfigValueFromEngine(engine, "model"),
+		Model:  config.GetEngineModel(engine),
 	}
 
-	// Stream from LLM
+	// Start streaming from LLM
 	fmt.Printf("🚀 Streaming from %s...\n", engine)
 	ch, err := client.Stream(ctx, req)
 	if err != nil {
 		return fmt.Errorf("❌ failed to start streaming: %w", err)
 	}
 
-	// Render output
-	outputType := getConfigValue("ui_output", "stdout")
-	fmt.Fprintf(os.Stderr, "DEBUG: outputType=%q\n", outputType)
-	factory := output.NewFactory(outputType)
-	renderer := factory.CreateRenderer()
-
+	// Render the output stream
+	renderer := output.NewFactory(config.GetUIOutput()).CreateRenderer()
 	if err := renderer.RenderStream(ch); err != nil {
 		return fmt.Errorf("❌ render error: %w", err)
 	}
@@ -171,57 +171,20 @@ func runWithLLM(prompt, engine string) error {
 	return nil
 }
 
-// Helper functions to get config values
-func getConfigValue(key, defaultValue string) string {
-	if config.AppConfig != nil {
-		switch key {
-		case "openai_model":
-			if cfg, ok := config.AppConfig.Engines["openai"]; ok && cfg.Model != "" {
-				return cfg.Model
-			}
-		case "gemini_model":
-			if cfg, ok := config.AppConfig.Engines["gemini"]; ok && cfg.Model != "" {
-				return cfg.Model
-			}
-		case "ui_output":
-			if config.AppConfig.UI.Output != "" {
-				return config.AppConfig.UI.Output
-			}
-		}
-	}
-	return defaultValue
-}
-
-func getConfigValueFromEngine(engine, key string) string {
-	if config.AppConfig != nil {
-		if cfg, ok := config.AppConfig.Engines[engine]; ok {
-			if key == "model" && cfg.Model != "" {
-				return cfg.Model
-			}
-		}
+// registerAvailableEngines registers LLM engines that have API keys configured.
+// It checks environment variables for API keys and only registers available engines.
+func registerAvailableEngines(mgr *llm.Manager) {
+	// Register OpenAI if API key is available
+	if apiKey := os.Getenv("OPENAI_API_KEY"); apiKey != "" {
+		model := config.GetEngineModel("openai")
+		timeout := config.GetEngineTimeout("openai")
+		mgr.Register("openai", openai.NewClient(apiKey, model, timeout))
 	}
 
-	// Return engine-specific defaults
-	switch engine {
-	case "openai":
-		return "gpt-4-mini"
-	case "gemini":
-		return "gemini-2.5-flash-lite"
-	default:
-		return "gpt-4-mini"
+	// Register Gemini if API key is available
+	if apiKey := os.Getenv("GEMINI_API_KEY"); apiKey != "" {
+		model := config.GetEngineModel("gemini")
+		timeout := config.GetEngineTimeout("gemini")
+		mgr.Register("gemini", gemini.NewClient(apiKey, model, timeout))
 	}
-}
-
-// getTimeoutFromConfig returns timeout for given engine from config
-// Falls back to 120s if not configured
-func getTimeoutFromConfig(engine string) time.Duration {
-	if config.AppConfig != nil {
-		if cfg, ok := config.AppConfig.Engines[engine]; ok {
-			if cfg.Timeout > 0 {
-				return cfg.Timeout
-			}
-		}
-	}
-	// Default to 120 seconds
-	return 120 * time.Second
 }

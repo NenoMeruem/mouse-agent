@@ -1,3 +1,4 @@
+// Package cli implements the command-line interface for the prompt agent.
 package cli
 
 import (
@@ -12,8 +13,10 @@ import (
 var rootCmd = &cobra.Command{
 	Use:   "prompt-agent",
 	Short: "Prompt Agent - build & run AI prompts fast",
+	Long: `A CLI tool for quickly building and running AI prompts with support for
+multiple LLM backends (OpenAI, Google Gemini) and reusable templates.`,
 	PersistentPreRunE: func(cmd *cobra.Command, args []string) error {
-		// Initialize app context (storage, config)
+		// Initialize application context once at startup
 		if err := app.InitializeContext(); err != nil {
 			return err
 		}
@@ -21,13 +24,10 @@ var rootCmd = &cobra.Command{
 	},
 }
 
+// Execute runs the root command and handles errors.
 func Execute() {
 	if err := rootCmd.Execute(); err != nil {
 		fmt.Println(err)
 		os.Exit(1)
 	}
-}
-
-func loadConfig(cmd *cobra.Command, args []string) error {
-	return config.Load()
 }

@@ -1,3 +1,4 @@
+// Package openai provides an OpenAI API client with streaming support.
 package openai
 
 import (
@@ -13,7 +14,8 @@ import (
 	"github.com/sl/prompt-builder-agent/internal/llm"
 )
 
-// Client is an OpenAI API client with streaming support
+// Client implements the llm.Client interface for OpenAI's API.
+// It supports streaming responses via Server-Sent Events (SSE).
 type Client struct {
 	apiKey  string
 	model   string
@@ -21,7 +23,7 @@ type Client struct {
 	baseURL string
 }
 
-// NewClient creates a new OpenAI client
+// NewClient creates a new OpenAI client with the given API key and model.
 func NewClient(apiKey string, model string, timeout time.Duration) *Client {
 	return &Client{
 		apiKey:  apiKey,

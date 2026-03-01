@@ -1,3 +1,4 @@
+// Package app handles application-wide initialization and context management.
 package app
 
 import (
@@ -9,25 +10,27 @@ import (
 	"github.com/sl/prompt-builder-agent/internal/storage"
 )
 
+// AppContext holds the core dependencies needed throughout the application.
+// It is initialized once at startup and accessed globally.
 type AppContext struct {
-	PromptStore      storage.PromptStore
-	Builder          prompt.Builder
-	SelectionManager *selection.Manager
-	Config           *config.Config
+	PromptStore      storage.PromptStore // Handles prompt persistence
+	Builder          prompt.Builder      // Handles template variable substitution
+	SelectionManager *selection.Manager  // Handles clipboard/selection access
+	Config           *config.Config      // Holds application configuration
 }
 
+// GlobalContext is the application-wide context initialized at startup.
 var GlobalContext *AppContext
 
+// InitializeContext sets up the application context by initializing all core components:
+// storage, prompt builder, selection manager, and configuration.
+// This should be called once at application startup.
 func InitializeContext() error {
-	dbPath := storage.GetDefaultDBPath()
+	jsonPath := storage.GetDefaultJSONPath()
 
-	store, err := storage.NewSQLiteStore(dbPath)
+	store, err := storage.NewJSONStore(jsonPath)
 	if err != nil {
 		return fmt.Errorf("cannot create prompt store: %w", err)
-	}
-
-	if err := store.Init(); err != nil {
-		return fmt.Errorf("cannot initialize prompt store: %w", err)
 	}
 
 	builder := prompt.NewSimpleBuilder()
