@@ -13,13 +13,28 @@ export OPENAI_API_KEY="sk-proj-..."
 # 2. Build
 cd ~/Workspace/Start-up/mouse-agent && go build ./cmd/prompt-agent
 
-# 3. Config (create ~/.prompt-agent/config.yaml)
+# 3. Config (create ~/.prompt-agent/config.yaml plus a prompts.json sample)
+
+The simplest way is to run the `init` command which will scaffold both files for you:
+
+```bash
+./prompt-agent init
+```
+
+It creates `~/.prompt-agent/config.yaml` with engine/UI defaults and a
+`~/.prompt-agent/prompts.json` containing a tiny example prompt entry.  You
+can edit or delete the sample record as needed.
+
+A manual config file would look like this:
+
+```yaml
 engines:
   openai:
     api_key: env:OPENAI_API_KEY
     model: gpt-4-mini
 ui:
   output: stdout
+```
 
 # 4. Create Prompt
 ./prompt-agent prompt add \

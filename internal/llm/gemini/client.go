@@ -2,25 +2,21 @@
 package gemini
 
 import (
-	"bytes"
 	"context"
-	"encoding/json"
 	"fmt"
-	"io"
-	"net/http"
 	"time"
 
+	"github.com/google/generative-ai-go/genai"
 	"github.com/sl/prompt-builder-agent/internal/llm"
+	"google.golang.org/api/option"
 )
 
 // Client implements the llm.Client interface for Google Gemini's API.
-// It communicates with the Generative Language API using Authorization headers
-// for security (not URL parameters).
+// It uses the official github.com/google/generative-ai-go SDK for API communication.
 type Client struct {
 	apiKey  string
 	model   string
 	timeout time.Duration
-	baseURL string
 }
 
 // NewClient creates a new Gemini client with the given API key and model.
@@ -29,7 +25,6 @@ func NewClient(apiKey string, model string, timeout time.Duration) *Client {
 		apiKey:  apiKey,
 		model:   model,
 		timeout: timeout,
-		baseURL: "https://generativelanguage.googleapis.com/v1beta/models",
 	}
 }
 
@@ -53,79 +48,30 @@ func (c *Client) Stream(ctx context.Context, req llm.Request) (<-chan llm.Chunk,
 
 // stream handles the Gemini API call with streaming
 func (c *Client) stream(ctx context.Context, req llm.Request, ch chan<- llm.Chunk) {
-	// Build request URL (API key secured via Authorization header)
-	url := fmt.Sprintf("%s/%s:generateContent", c.baseURL, c.model)
-
-	payload := map[string]interface{}{
-		"contents": []map[string]interface{}{
-			{
-				"parts": []map[string]string{
-					{"text": req.Prompt},
-				},
-			},
-		},
-	}
-
-	body, err := json.Marshal(payload)
+	// Create a new Gemini client with API key option
+	gc, err := genai.NewClient(ctx, option.WithAPIKey(c.apiKey))
 	if err != nil {
-		ch <- llm.Chunk{Err: fmt.Errorf("failed to marshal request: %w", err), Done: true}
+		ch <- llm.Chunk{Err: fmt.Errorf("failed to create Gemini client: %w", err), Done: true}
 		return
 	}
+	defer gc.Close()
 
-	// Use provided context for proper cancellation support
-	httpReq, err := http.NewRequestWithContext(ctx, "POST", url, bytes.NewReader(body))
+	// Get the model
+	model := gc.GenerativeModel(c.model)
+
+	// Set timeout context
+	timeoutCtx, cancel := context.WithTimeout(ctx, c.timeout)
+	defer cancel()
+
+	// Generate content using the SDK
+	resp, err := model.GenerateContent(timeoutCtx, genai.Text(req.Prompt))
 	if err != nil {
-		ch <- llm.Chunk{Err: fmt.Errorf("failed to create request: %w", err), Done: true}
+		ch <- llm.Chunk{Err: fmt.Errorf("Gemini API error: %w", err), Done: true}
 		return
 	}
 
-	// Set headers: use Authorization header instead of URL parameter for security
-	httpReq.Header.Set("Content-Type", "application/json")
-	httpReq.Header.Set("Authorization", fmt.Sprintf("Bearer %s", c.apiKey))
-
-	// Create HTTP client with timeout
-	transport := &http.Transport{
-		DisableKeepAlives:   false,
-		MaxIdleConnsPerHost: 10,
-	}
-
-	client := &http.Client{
-		Timeout:   c.timeout,
-		Transport: transport,
-	}
-
-	resp, err := client.Do(httpReq)
-	if err != nil {
-		ch <- llm.Chunk{Err: fmt.Errorf("request failed: %w", err), Done: true}
-		return
-	}
-	defer resp.Body.Close()
-
-	// Check response status
-	if resp.StatusCode != http.StatusOK {
-		bodyBytes, _ := io.ReadAll(resp.Body)
-		ch <- llm.Chunk{
-			Err:  fmt.Errorf("API error %d: %s", resp.StatusCode, string(bodyBytes)),
-			Done: true,
-		}
-		return
-	}
-
-	// Read and parse response
-	bodyBytes, err := io.ReadAll(resp.Body)
-	if err != nil {
-		ch <- llm.Chunk{Err: fmt.Errorf("failed to read response: %w", err), Done: true}
-		return
-	}
-
-	var geminiResp GenerateContentResponse
-	if err := json.Unmarshal(bodyBytes, &geminiResp); err != nil {
-		ch <- llm.Chunk{Err: fmt.Errorf("failed to parse response: %w", err), Done: true}
-		return
-	}
-
-	// Extract text and stream it
-	text := c.extractText(geminiResp)
+	// Extract and stream text from response
+	text := c.extractText(resp)
 	if text != "" {
 		// Split text into chunks for streaming effect
 		// Send in 100-char chunks to simulate streaming
@@ -144,24 +90,21 @@ func (c *Client) stream(ctx context.Context, req llm.Request, ch chan<- llm.Chun
 }
 
 // extractText extracts the text content from Gemini response
-func (c *Client) extractText(resp GenerateContentResponse) string {
-	for _, candidate := range resp.Candidates {
-		for _, part := range candidate.Content.Parts {
-			if part.Text != "" {
-				return part.Text
+func (c *Client) extractText(resp *genai.GenerateContentResponse) string {
+	if resp == nil {
+		return ""
+	}
+
+	// Iterate through candidates and extract text
+	for _, cand := range resp.Candidates {
+		if cand.Content != nil {
+			for _, part := range cand.Content.Parts {
+				if text, ok := part.(genai.Text); ok {
+					return string(text)
+				}
 			}
 		}
 	}
-	return ""
-}
 
-// GenerateContentResponse represents Gemini's API response format
-type GenerateContentResponse struct {
-	Candidates []struct {
-		Content struct {
-			Parts []struct {
-				Text string `json:"text"`
-			} `json:"parts"`
-		} `json:"content"`
-	} `json:"candidates"`
+	return ""
 }

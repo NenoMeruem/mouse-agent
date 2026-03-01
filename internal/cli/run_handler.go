@@ -75,8 +75,11 @@ func runPromptCommand(cmd *cobra.Command, args []string) error {
 			return fmt.Errorf("❌ editor error: %w", err)
 		}
 		if !confirmed {
-			fmt.Println("❌ Cancelled by user")
-			return nil
+			fmt.Println("❌ Cancelled by user (exiting app)")
+			// immediately terminate the entire application instead of
+			// continuing execution. this ensures that pressing cancel in
+			// the prompt editor quits the program as requested.
+			os.Exit(0)
 		}
 		finalPrompt = editedPrompt
 	}
@@ -172,19 +175,32 @@ func runWithLLM(prompt, engine string) error {
 }
 
 // registerAvailableEngines registers LLM engines that have API keys configured.
-// It checks environment variables for API keys and only registers available engines.
+// It checks both environment variables and config file for API keys.
+// Priority: environment variable > config file
 func registerAvailableEngines(mgr *llm.Manager) {
 	// Register OpenAI if API key is available
-	if apiKey := os.Getenv("OPENAI_API_KEY"); apiKey != "" {
+	openaiKey := os.Getenv("OPENAI_API_KEY")
+	if openaiKey == "" && config.AppConfig != nil {
+		if cfg, ok := config.AppConfig.Engines["openai"]; ok {
+			openaiKey = cfg.APIKey
+		}
+	}
+	if openaiKey != "" {
 		model := config.GetEngineModel("openai")
 		timeout := config.GetEngineTimeout("openai")
-		mgr.Register("openai", openai.NewClient(apiKey, model, timeout))
+		mgr.Register("openai", openai.NewClient(openaiKey, model, timeout))
 	}
 
 	// Register Gemini if API key is available
-	if apiKey := os.Getenv("GEMINI_API_KEY"); apiKey != "" {
+	geminiKey := os.Getenv("GEMINI_API_KEY")
+	if geminiKey == "" && config.AppConfig != nil {
+		if cfg, ok := config.AppConfig.Engines["gemini"]; ok {
+			geminiKey = cfg.APIKey
+		}
+	}
+	if geminiKey != "" {
 		model := config.GetEngineModel("gemini")
 		timeout := config.GetEngineTimeout("gemini")
-		mgr.Register("gemini", gemini.NewClient(apiKey, model, timeout))
+		mgr.Register("gemini", gemini.NewClient(geminiKey, model, timeout))
 	}
 }

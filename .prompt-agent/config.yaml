@@ -3,10 +3,10 @@
 # LLM Engine Configuration
 engines:
   # OpenAI Configuration
-  openai:
-    api_key: env:OPENAI_API_KEY      # Set via environment variable
-    model: gpt-4-mini                 # Model name
-    timeout: 120s                      # Request timeout
+  # openai:
+  #   api_key: env:OPENAI_API_KEY      # Set via environment variable
+  #   model: gpt-4-mini                 # Model name
+  #   timeout: 120s                      # Request timeout
 
   # Google Gemini Configuration
   gemini:
@@ -19,17 +19,17 @@ ui:
   output: tui                          # Options: "stdout" or "tui"
   # output: stdout                     # Use stdout for plain text output
 
-# Trigger Configuration
-triggers:
-  enabled: false
-  default_prompt: "explain_code"
-  hotkeys:
-    shift+cmd+a: "explain_code"
-    shift+cmd+r: "code_review"
-  mouse: {}
+# # Trigger Configuration
+# triggers:
+#   enabled: false
+#   default_prompt: "explain_code"
+#   hotkeys:
+#     shift+cmd+a: "explain_code"
+#     shift+cmd+r: "code_review"
+#   mouse: {}
 
-# Selection Configuration
-selection:
-  provider: auto                       # auto, macos, linux, windows
-  fail_on_empty_selection: true
-  trim_whitespace: true
+# # Selection Configuration
+# selection:
+#   provider: auto                       # auto, macos, linux, windows
+#   fail_on_empty_selection: true
+#   trim_whitespace: true

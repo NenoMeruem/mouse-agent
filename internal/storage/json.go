@@ -22,7 +22,7 @@ type JSONStore struct {
 }
 
 // NewJSONStore creates a new JSON-backed prompt store.
-// It creates the necessary directory if it doesn't exist and loads any existing prompts.
+// Loads prompts from file if it exists, otherwise initializes with hardcoded prompts.
 func NewJSONStore(filePath string) (*JSONStore, error) {
 	// Ensure directory exists
 	dir := filepath.Dir(filePath)
@@ -35,10 +35,51 @@ func NewJSONStore(filePath string) (*JSONStore, error) {
 		prompts:  make(map[string]*models.Prompt),
 	}
 
-	// Load existing prompts if file exists
+	// Try to load existing prompts from file
 	if _, err := os.Stat(filePath); err == nil {
+		// File exists, load from it
 		if err := store.load(); err != nil {
 			return nil, fmt.Errorf("cannot load prompts: %w", err)
+		}
+	} else {
+		// File doesn't exist, initialize with hardcoded example prompts
+		now := time.Now()
+		examplePrompts := []models.Prompt{
+			{
+				ID:          "example",
+				Name:        "Example Prompt",
+				Description: "This is a sample prompt. Edit or delete it.",
+				Engine:      "openai",
+				Template:    "Write a short description of {{.topic}}.",
+				Variables:   []string{"topic"},
+				CreatedAt:   now,
+				UpdatedAt:   now,
+			},
+			{
+				ID:          "summarize",
+				Name:        "Summarize Text",
+				Description: "Summarize the provided text in concise bullet points.",
+				Engine:      "openai",
+				Template:    "Please summarize the following text:\n{{.text}}",
+				Variables:   []string{"text"},
+				CreatedAt:   now.Add(-1 * time.Hour),
+				UpdatedAt:   now.Add(-1 * time.Hour),
+			},
+			{
+				ID:          "translate",
+				Name:        "Translate Text",
+				Description: "Translate text from one language to another.",
+				Engine:      "openai",
+				Template:    "Translate the following {{.source_lang}} text to {{.target_lang}}:\n{{.text}}",
+				Variables:   []string{"source_lang", "target_lang", "text"},
+				CreatedAt:   now.Add(-2 * time.Hour),
+				UpdatedAt:   now.Add(-2 * time.Hour),
+			},
+		}
+
+		// Add hardcoded prompts to store
+		for i := range examplePrompts {
+			store.prompts[examplePrompts[i].ID] = &examplePrompts[i]
 		}
 	}
 

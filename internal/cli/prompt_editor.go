@@ -27,13 +27,14 @@ var editorKeys = editorKeyMap{
 }
 
 type promptEditorModel struct {
-	prompt   string
-	edited   string
-	mode     string // "preview", "edit", "confirm"
-	viewport viewport.Model
-	width    int
-	height   int
-	showHelp bool
+	prompt    string
+	edited    string
+	mode      string // "preview", "edit", "confirm"
+	viewport  viewport.Model
+	width     int
+	height    int
+	showHelp  bool
+	cancelled bool // set when user cancels the editor
 }
 
 func newPromptEditorModel(prompt string) promptEditorModel {
@@ -46,7 +47,7 @@ func newPromptEditorModel(prompt string) promptEditorModel {
 	return promptEditorModel{
 		prompt:   prompt,
 		edited:   prompt,
-		mode:     "preview",
+		mode:     "confirm",
 		viewport: vp,
 		showHelp: true,
 	}
@@ -64,38 +65,40 @@ func (m promptEditorModel) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 		switch m.mode {
 		case "preview":
 			switch {
-			case key.Matches(msg, editorKeys.Edit):
-				// Open external editor
-				edited, err := openExternalEditor(m.prompt)
-				if err != nil {
-					// If editor fails, just proceed with original
-					m.mode = "confirm"
-					return m, nil
-				}
-				m.edited = edited
-				m.viewport.SetContent(edited)
-				m.mode = "confirm"
-				return m, nil
+			// case key.Matches(msg, editorKeys.Edit):
+			// 	// Open external editor
+			// 	edited, err := openExternalEditor(m.prompt)
+			// 	if err != nil {
+			// 		// If editor fails, just proceed with original
+			// 		m.mode = "confirm"
+			// 		return m, nil
+			// 	}
+			// 	m.edited = edited
+			// 	m.viewport.SetContent(edited)
+			// 	m.mode = "confirm"
+			// 	return m, nil
+			//
 			case key.Matches(msg, editorKeys.Send):
 				m.mode = "confirm"
 				return m, nil
 			case key.Matches(msg, editorKeys.Cancel):
+				m.cancelled = true
 				return m, tea.Quit
 			default:
 				// Allow scrolling in preview
 				m.viewport, cmd = m.viewport.Update(msg)
 				return m, cmd
 			}
-
+		// case "preview":
 		case "confirm":
 			switch {
 			case key.Matches(msg, editorKeys.Confirm):
 				// User confirmed, return edited prompt
 				return m, tea.Quit
 			case key.Matches(msg, editorKeys.Cancel):
-				// Go back to preview
-				m.mode = "preview"
-				return m, nil
+				// Cancel while in confirmation should quit the TUI session.
+				m.cancelled = true
+				return m, tea.Quit
 			default:
 				// Allow scrolling in confirm
 				m.viewport, cmd = m.viewport.Update(msg)
@@ -150,7 +153,7 @@ func (m promptEditorModel) View() string {
 		if m.mode == "preview" {
 			help = lipgloss.NewStyle().
 				Foreground(lipgloss.Color("8")).
-				Render("Press 'e' to edit | 's' or Enter to send | 'q' to cancel | ↑↓ to scroll")
+				Render("Press 's' or Enter to send | 'q' to cancel | ↑↓ to scroll")
 		} else {
 			help = lipgloss.NewStyle().
 				Foreground(lipgloss.Color("8")).
@@ -215,7 +218,7 @@ func PromptEditor(prompt string) (string, bool, error) {
 	model := finalModel.(promptEditorModel)
 
 	// Check if user cancelled (didn't confirm)
-	if model.mode != "confirm" || model.edited == "" {
+	if model.cancelled || model.mode != "confirm" || model.edited == "" {
 		return "", false, nil
 	}
 
