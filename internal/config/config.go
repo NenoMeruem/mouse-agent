@@ -15,6 +15,7 @@ import (
 const (
 	DefaultOpenAIModel       = "gpt-4-mini"
 	DefaultGeminiModel       = "gemini-2.5-flash-lite"
+	DefaultClaudeModel       = "claude-sonnet-4-6"
 	DefaultTimeout           = 120 * time.Second // Timeout for API requests
 	DefaultUIOutput          = "stdout"
 	DefaultSelectionProvider = "auto"
@@ -113,6 +114,8 @@ func GetEngineModel(engine string) string {
 		return DefaultOpenAIModel
 	case "gemini":
 		return DefaultGeminiModel
+	case "claude":
+		return DefaultClaudeModel
 	default:
 		return DefaultOpenAIModel
 	}

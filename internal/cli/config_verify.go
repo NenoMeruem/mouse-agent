@@ -67,6 +67,12 @@ var verifyConfigCmd = &cobra.Command{
 			fmt.Println("   ⚠️  GEMINI_API_KEY not set")
 		}
 
+		if os.Getenv("ANTHROPIC_API_KEY") != "" {
+			fmt.Println("   ✅ ANTHROPIC_API_KEY is set")
+		} else {
+			fmt.Println("   ⚠️  ANTHROPIC_API_KEY not set")
+		}
+
 		fmt.Println()
 
 		// Test which engines are actually available
@@ -89,6 +95,7 @@ var verifyConfigCmd = &cobra.Command{
 			fmt.Println("   2. OR set environment variables:")
 			fmt.Println("      export OPENAI_API_KEY=\"your-key\"")
 			fmt.Println("      export GEMINI_API_KEY=\"your-key\"")
+			fmt.Println("      export ANTHROPIC_API_KEY=\"your-key\"")
 			return nil
 		}
 

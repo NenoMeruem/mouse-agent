@@ -12,6 +12,7 @@ import (
 	"github.com/sl/prompt-builder-agent/internal/app"
 	"github.com/sl/prompt-builder-agent/internal/config"
 	"github.com/sl/prompt-builder-agent/internal/llm"
+	"github.com/sl/prompt-builder-agent/internal/llm/claude"
 	"github.com/sl/prompt-builder-agent/internal/llm/gemini"
 	"github.com/sl/prompt-builder-agent/internal/llm/openai"
 	"github.com/sl/prompt-builder-agent/internal/output"
@@ -202,5 +203,18 @@ func registerAvailableEngines(mgr *llm.Manager) {
 		model := config.GetEngineModel("gemini")
 		timeout := config.GetEngineTimeout("gemini")
 		mgr.Register("gemini", gemini.NewClient(geminiKey, model, timeout))
+	}
+
+	// Register Claude if API key is available
+	claudeKey := os.Getenv("ANTHROPIC_API_KEY")
+	if claudeKey == "" && config.AppConfig != nil {
+		if cfg, ok := config.AppConfig.Engines["claude"]; ok {
+			claudeKey = cfg.APIKey
+		}
+	}
+	if claudeKey != "" {
+		model := config.GetEngineModel("claude")
+		timeout := config.GetEngineTimeout("claude")
+		mgr.Register("claude", claude.NewClient(claudeKey, model, timeout))
 	}
 }
