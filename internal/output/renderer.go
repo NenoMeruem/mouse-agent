@@ -14,12 +14,14 @@ type StreamRenderer interface {
 // Factory creates renderers based on configuration
 type Factory struct {
 	outputType string
+	engine     string
 }
 
 // NewFactory creates a new renderer factory
-func NewFactory(outputType string) *Factory {
+func NewFactory(outputType, engine string) *Factory {
 	return &Factory{
 		outputType: outputType,
+		engine:     engine,
 	}
 }
 
@@ -27,7 +29,7 @@ func NewFactory(outputType string) *Factory {
 func (f *Factory) CreateRenderer() StreamRenderer {
 	switch f.outputType {
 	case "tui":
-		return NewTUIRenderer()
+		return NewTUIRenderer(f.engine)
 	case "stdout":
 		fallthrough
 	default:

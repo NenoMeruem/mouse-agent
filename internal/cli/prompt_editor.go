@@ -20,97 +20,71 @@ type editorKeyMap struct {
 }
 
 var editorKeys = editorKeyMap{
-	Edit:    key.NewBinding(key.WithKeys("e"), key.WithHelp("e", "edit")),
+	Edit:    key.NewBinding(key.WithKeys("e"), key.WithHelp("e", "edit in $EDITOR")),
 	Send:    key.NewBinding(key.WithKeys("s", "enter"), key.WithHelp("s/enter", "send")),
 	Cancel:  key.NewBinding(key.WithKeys("q", "esc", "ctrl+c"), key.WithHelp("q/esc", "cancel")),
-	Confirm: key.NewBinding(key.WithKeys("y"), key.WithHelp("y", "confirm")),
+	Confirm: key.NewBinding(key.WithKeys("y"), key.WithHelp("y", "confirm & send")),
 }
 
 type promptEditorModel struct {
 	prompt    string
 	edited    string
-	mode      string // "preview", "edit", "confirm"
+	engine    string
+	mode      string // "confirm"
 	viewport  viewport.Model
 	width     int
 	height    int
-	showHelp  bool
-	cancelled bool // set when user cancels the editor
+	cancelled bool
 }
 
-func newPromptEditorModel(prompt string) promptEditorModel {
+func newPromptEditorModel(prompt, engine string) promptEditorModel {
 	vp := viewport.New(80, 20)
 	vp.Style = lipgloss.NewStyle().
 		BorderStyle(lipgloss.RoundedBorder()).
-		BorderForeground(lipgloss.Color("62"))
+		BorderForeground(lipgloss.Color("10"))
 	vp.SetContent(prompt)
 
 	return promptEditorModel{
 		prompt:   prompt,
 		edited:   prompt,
+		engine:   engine,
 		mode:     "confirm",
 		viewport: vp,
-		showHelp: true,
 	}
 }
 
-func (m promptEditorModel) Init() tea.Cmd {
-	return nil
-}
+func (m promptEditorModel) Init() tea.Cmd { return nil }
 
 func (m promptEditorModel) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 	var cmd tea.Cmd
 
 	switch msg := msg.(type) {
 	case tea.KeyMsg:
-		switch m.mode {
-		case "preview":
-			switch {
-			// case key.Matches(msg, editorKeys.Edit):
-			// 	// Open external editor
-			// 	edited, err := openExternalEditor(m.prompt)
-			// 	if err != nil {
-			// 		// If editor fails, just proceed with original
-			// 		m.mode = "confirm"
-			// 		return m, nil
-			// 	}
-			// 	m.edited = edited
-			// 	m.viewport.SetContent(edited)
-			// 	m.mode = "confirm"
-			// 	return m, nil
-			//
-			case key.Matches(msg, editorKeys.Send):
-				m.mode = "confirm"
-				return m, nil
-			case key.Matches(msg, editorKeys.Cancel):
-				m.cancelled = true
-				return m, tea.Quit
-			default:
-				// Allow scrolling in preview
-				m.viewport, cmd = m.viewport.Update(msg)
-				return m, cmd
+		switch {
+		case key.Matches(msg, editorKeys.Confirm):
+			return m, tea.Quit
+		case key.Matches(msg, editorKeys.Edit):
+			edited, err := openExternalEditor(m.edited)
+			if err == nil {
+				m.edited = edited
+				m.viewport.SetContent(edited)
 			}
-		// case "preview":
-		case "confirm":
-			switch {
-			case key.Matches(msg, editorKeys.Confirm):
-				// User confirmed, return edited prompt
-				return m, tea.Quit
-			case key.Matches(msg, editorKeys.Cancel):
-				// Cancel while in confirmation should quit the TUI session.
-				m.cancelled = true
-				return m, tea.Quit
-			default:
-				// Allow scrolling in confirm
-				m.viewport, cmd = m.viewport.Update(msg)
-				return m, cmd
-			}
+			return m, nil
+		case key.Matches(msg, editorKeys.Cancel):
+			m.cancelled = true
+			return m, tea.Quit
+		default:
+			m.viewport, cmd = m.viewport.Update(msg)
+			return m, cmd
 		}
 
 	case tea.WindowSizeMsg:
 		m.width = msg.Width
 		m.height = msg.Height
+		headerH := 5 // title + meta + padding
+		footerH := 2 // statusbar
 		m.viewport.Width = msg.Width - 4
-		m.viewport.Height = msg.Height - 10
+		m.viewport.Height = msg.Height - headerH - footerH
 		return m, nil
 	}
 
@@ -118,96 +92,108 @@ func (m promptEditorModel) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 }
 
 func (m promptEditorModel) View() string {
-	var s strings.Builder
-
-	// Header
-	header := lipgloss.NewStyle().
-		Bold(true).
-		Foreground(lipgloss.Color("39")).
-		Padding(0, 1).
-		Render("📝 Prompt Preview & Editor")
-
-	s.WriteString(header + "\n\n")
-
-	switch m.mode {
-	case "preview":
-		// Preview mode
-		info := lipgloss.NewStyle().
-			Foreground(lipgloss.Color("8")).
-			Render(fmt.Sprintf("Engine: %s | Length: %d chars", "LLM", len(m.prompt)))
-
-		s.WriteString(info + "\n\n")
-
-		// Prompt content with border
-		promptBox := lipgloss.NewStyle().
-			BorderStyle(lipgloss.RoundedBorder()).
-			BorderForeground(lipgloss.Color("62")).
-			Padding(1, 2).
-			Width(m.width - 4).
-			Render(m.prompt)
-
-		s.WriteString(promptBox + "\n\n")
-
-		// Help text
-		var help string
-		if m.mode == "preview" {
-			help = lipgloss.NewStyle().
-				Foreground(lipgloss.Color("8")).
-				Render("Press 's' or Enter to send | 'q' to cancel | ↑↓ to scroll")
-		} else {
-			help = lipgloss.NewStyle().
-				Foreground(lipgloss.Color("8")).
-				Render("Press 'y' to confirm and send | 'q' to go back | ↑↓ to scroll")
-		}
-		s.WriteString(help)
-
-	case "confirm":
-		// Confirm mode
-		info := lipgloss.NewStyle().
-			Foreground(lipgloss.Color("2")).
-			Bold(true).
-			Render("✓ Ready to send")
-
-		s.WriteString(info + "\n\n")
-
-		// Show what will be sent
-		var contentToShow string
-		if m.edited != m.prompt {
-			contentToShow = m.edited
-			diff := lipgloss.NewStyle().
-				Foreground(lipgloss.Color("3")).
-				Render("(Edited - " + fmt.Sprintf("%d chars", len(m.edited)) + ")")
-			s.WriteString(diff + "\n\n")
-		} else {
-			contentToShow = m.prompt
-		}
-
-		promptBox := lipgloss.NewStyle().
-			BorderStyle(lipgloss.RoundedBorder()).
-			BorderForeground(lipgloss.Color("2")).
-			Padding(1, 2).
-			Width(m.width - 4).
-			Render(contentToShow)
-
-		s.WriteString(promptBox + "\n\n")
-
-		// Help text
-		help := lipgloss.NewStyle().
-			Foreground(lipgloss.Color("8")).
-			Render("Press 'y' to confirm and send | 'q' to go back")
-
-		s.WriteString(help)
+	width := m.width
+	if width == 0 {
+		width = 80
 	}
 
+	// ── Header ───────────────────────────────────────────────
+	title := lipgloss.NewStyle().
+		Bold(true).
+		Foreground(lipgloss.Color("39")).
+		Render("📝 Prompt Preview & Editor")
+
+	var engineBadge string
+	if m.engine != "" && m.engine != "none" {
+		engineBadge = lipgloss.NewStyle().
+			Background(lipgloss.Color("55")).
+			Foreground(lipgloss.Color("183")).
+			Padding(0, 1).
+			Render(m.engine)
+	}
+
+	headerRight := engineBadge
+	header := lipgloss.NewStyle().Width(width).Render(
+		lipgloss.JoinHorizontal(lipgloss.Left,
+			title,
+			lipgloss.NewStyle().
+				Width(width-lipgloss.Width(title)-lipgloss.Width(headerRight)).
+				Render(""),
+			headerRight,
+		),
+	)
+
+	// ── Meta row ─────────────────────────────────────────────
+	statusText := lipgloss.NewStyle().
+		Foreground(lipgloss.Color("10")).
+		Bold(true).
+		Render("✓ Ready to send")
+
+	charCount := len([]rune(m.edited))
+	tokenEst := charCount / 4
+	if tokenEst < 1 && charCount > 0 {
+		tokenEst = 1
+	}
+	metaRight := lipgloss.NewStyle().
+		Foreground(lipgloss.Color("8")).
+		Render(fmt.Sprintf("%d chars · ~%d tokens", charCount, tokenEst))
+
+	if m.edited != m.prompt {
+		metaRight = lipgloss.NewStyle().
+			Foreground(lipgloss.Color("11")).
+			Render(fmt.Sprintf("(edited) %d chars · ~%d tokens", charCount, tokenEst))
+	}
+
+	meta := lipgloss.NewStyle().Width(width).Render(
+		lipgloss.JoinHorizontal(lipgloss.Left,
+			statusText,
+			lipgloss.NewStyle().
+				Width(width-lipgloss.Width(statusText)-lipgloss.Width(metaRight)).
+				Render(""),
+			metaRight,
+		),
+	)
+
+	// ── Viewport (scrollable prompt content) ─────────────────
+	viewportView := m.viewport.View()
+
+	// ── Statusbar ────────────────────────────────────────────
+	type keyHint struct{ key, desc string }
+	renderKeys := func(hints []keyHint) string {
+		result := ""
+		for _, h := range hints {
+			k := lipgloss.NewStyle().
+				Background(lipgloss.Color("240")).
+				Foreground(lipgloss.Color("255")).
+				Padding(0, 1).
+				Render(h.key)
+			d := lipgloss.NewStyle().
+				Foreground(lipgloss.Color("245")).
+				Render(" " + h.desc + "  ")
+			result += k + d
+		}
+		return result
+	}
+
+	keys := renderKeys([]keyHint{
+		{"y", "send"}, {"e", "edit"}, {"q", "cancel"}, {"↑↓", "scroll"},
+	})
+
+	statusbar := lipgloss.NewStyle().
+		Background(lipgloss.Color("237")).
+		Width(width).
+		Padding(0, 1).
+		Render(keys)
+
 	return lipgloss.NewStyle().
-		Width(m.width).
+		Width(width).
 		Height(m.height).
-		Render(s.String())
+		Render(fmt.Sprintf("%s\n%s\n\n%s\n%s", header, meta, viewportView, statusbar))
 }
 
 // PromptEditor allows user to preview and edit prompt before sending
-func PromptEditor(prompt string) (string, bool, error) {
-	m := newPromptEditorModel(prompt)
+func PromptEditor(prompt, engine string) (string, bool, error) {
+	m := newPromptEditorModel(prompt, engine)
 	p := tea.NewProgram(m, tea.WithAltScreen())
 
 	finalModel, err := p.Run()
@@ -217,33 +203,28 @@ func PromptEditor(prompt string) (string, bool, error) {
 
 	model := finalModel.(promptEditorModel)
 
-	// Check if user cancelled (didn't confirm)
-	if model.cancelled || model.mode != "confirm" || model.edited == "" {
+	if model.cancelled || model.edited == "" {
 		return "", false, nil
 	}
 
 	return model.edited, true, nil
 }
 
-// openExternalEditor opens the system's default editor (vim/nano/vi) to edit the prompt
+// openExternalEditor opens the system's default editor to edit the prompt
 func openExternalEditor(content string) (string, error) {
-	// Create temp file
 	tmpFile, err := os.CreateTemp("", "prompt-edit-*.txt")
 	if err != nil {
 		return content, fmt.Errorf("failed to create temp file: %w", err)
 	}
 	defer os.Remove(tmpFile.Name())
 
-	// Write content to temp file
 	if _, err := tmpFile.WriteString(content); err != nil {
 		return content, fmt.Errorf("failed to write temp file: %w", err)
 	}
 	tmpFile.Close()
 
-	// Determine editor (prefer $EDITOR, fallback to vim/nano)
 	editor := os.Getenv("EDITOR")
 	if editor == "" {
-		// Try common editors
 		for _, e := range []string{"vim", "nano", "vi"} {
 			if _, err := exec.LookPath(e); err == nil {
 				editor = e
@@ -255,7 +236,6 @@ func openExternalEditor(content string) (string, error) {
 		}
 	}
 
-	// Open editor
 	cmd := exec.Command(editor, tmpFile.Name())
 	cmd.Stdin = os.Stdin
 	cmd.Stdout = os.Stdout
@@ -265,7 +245,6 @@ func openExternalEditor(content string) (string, error) {
 		return content, fmt.Errorf("editor failed: %w", err)
 	}
 
-	// Read edited content
 	editedBytes, err := os.ReadFile(tmpFile.Name())
 	if err != nil {
 		return content, fmt.Errorf("failed to read edited file: %w", err)

@@ -71,7 +71,7 @@ func runPromptCommand(cmd *cobra.Command, args []string) error {
 
 	// Allow user to review and edit the prompt before sending
 	if promptDef.Engine != "" && promptDef.Engine != "none" {
-		editedPrompt, confirmed, err := PromptEditor(finalPrompt)
+		editedPrompt, confirmed, err := PromptEditor(finalPrompt, promptDef.Engine)
 		if err != nil {
 			return fmt.Errorf("❌ editor error: %w", err)
 		}
@@ -167,7 +167,7 @@ func runWithLLM(prompt, engine string) error {
 	}
 
 	// Render the output stream
-	renderer := output.NewFactory(config.GetUIOutput()).CreateRenderer()
+	renderer := output.NewFactory(config.GetUIOutput(), engine).CreateRenderer()
 	if err := renderer.RenderStream(ch); err != nil {
 		return fmt.Errorf("❌ render error: %w", err)
 	}
