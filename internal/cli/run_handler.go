@@ -4,11 +4,14 @@ import (
 	"bufio"
 	"context"
 	"fmt"
+	"io"
 	"os"
 	"os/signal"
 	"strings"
 	"syscall"
+	"time"
 
+	"github.com/google/uuid"
 	"github.com/sl/prompt-builder-agent/internal/app"
 	"github.com/sl/prompt-builder-agent/internal/config"
 	"github.com/sl/prompt-builder-agent/internal/llm"
@@ -17,6 +20,7 @@ import (
 	"github.com/sl/prompt-builder-agent/internal/llm/openai"
 	"github.com/sl/prompt-builder-agent/internal/output"
 	promptlib "github.com/sl/prompt-builder-agent/internal/prompt"
+	"github.com/sl/prompt-builder-agent/pkg/models"
 	"github.com/spf13/cobra"
 )
 
@@ -44,6 +48,17 @@ func runPromptCommand(cmd *cobra.Command, args []string) error {
 			return fmt.Errorf("❌ %w", err)
 		}
 		data["selection"] = selectionText
+	} else {
+		// When --no-select, check if there's data piped on stdin
+		stat, err := os.Stdin.Stat()
+		if err == nil && (stat.Mode()&os.ModeCharDevice) == 0 {
+			// stdin is a pipe, read from it
+			bytes, err := io.ReadAll(os.Stdin)
+			if err != nil {
+				return fmt.Errorf("❌ cannot read stdin: %w", err)
+			}
+			data["selection"] = strings.TrimSpace(string(bytes))
+		}
 	}
 
 	// Prompt user for any missing variables from prompt definition
@@ -84,7 +99,26 @@ func runPromptCommand(cmd *cobra.Command, args []string) error {
 
 	// Send to LLM if engine is specified
 	if promptDef.Engine != "" && promptDef.Engine != "none" {
-		return runWithLLM(finalPrompt, promptDef.Engine)
+		response, durationMs, err := runWithLLM(finalPrompt, promptDef.Engine)
+		if err != nil {
+			return err
+		}
+
+		// Save to history (non-fatal)
+		if app.GlobalContext.HistoryStore != nil {
+			record := &models.RunRecord{
+				ID:          uuid.New().String(),
+				PromptID:    promptDef.ID,
+				Engine:      promptDef.Engine,
+				InputText:   data["selection"],
+				FinalPrompt: finalPrompt,
+				Response:    response,
+				DurationMs:  durationMs,
+				CreatedAt:   time.Now(),
+			}
+			_ = app.GlobalContext.HistoryStore.Append(record)
+		}
+		return nil
 	}
 
 	// Fallback: show prompt without LLM call
@@ -131,7 +165,8 @@ func collectMissingVariables(requiredVars []string, data map[string]string) erro
 // runWithLLM sends the prompt to an LLM engine and renders the streamed response.
 // It handles setting up the correct LLM client, managing context cancellation,
 // and rendering output according to user preferences.
-func runWithLLM(prompt, engine string) error {
+// Returns the full response text, duration in milliseconds, and any error.
+func runWithLLM(prompt, engine string) (string, int64, error) {
 	// Initialize LLM manager and register available engines
 	llmMgr := llm.NewManager()
 	registerAvailableEngines(llmMgr)
@@ -139,7 +174,7 @@ func runWithLLM(prompt, engine string) error {
 	// Get the LLM client for requested engine
 	client, err := llmMgr.Get(engine)
 	if err != nil {
-		return fmt.Errorf("❌ %w", err)
+		return "", 0, fmt.Errorf("❌ %w", err)
 	}
 
 	// Create cancellable context (Ctrl+C support)
@@ -160,16 +195,31 @@ func runWithLLM(prompt, engine string) error {
 	fmt.Printf("🚀 Streaming from %s...\n", engine)
 	ch, err := client.Stream(ctx, req)
 	if err != nil {
-		return fmt.Errorf("❌ failed to start streaming: %w", err)
+		return "", 0, fmt.Errorf("❌ failed to start streaming: %w", err)
 	}
+
+	// Tee the channel: capture response while streaming to renderer
+	var responseBuilder strings.Builder
+	startTime := time.Now()
+
+	teeCh := make(chan llm.Chunk, 10)
+	go func() {
+		for chunk := range ch {
+			if chunk.Text != "" {
+				responseBuilder.WriteString(chunk.Text)
+			}
+			teeCh <- chunk
+		}
+		close(teeCh)
+	}()
 
 	// Render the output stream
 	renderer := output.NewFactory(config.GetUIOutput(), engine).CreateRenderer()
-	if err := renderer.RenderStream(ch); err != nil {
-		return fmt.Errorf("❌ render error: %w", err)
+	if err := renderer.RenderStream(teeCh); err != nil {
+		return "", 0, fmt.Errorf("❌ render error: %w", err)
 	}
 
-	return nil
+	return responseBuilder.String(), time.Since(startTime).Milliseconds(), nil
 }
 
 // registerAvailableEngines registers LLM engines that have API keys configured.
