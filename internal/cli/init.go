@@ -51,7 +51,7 @@ ui:
 	"name": "Example Prompt",
 	"description": "This is a sample prompt. Edit or delete it.",
 	"engine": "openai",
-	"template": "Write a short description of {{.topic}}.",
+	"template": "Write a short description of {{topic}}.",
 	"variables": ["topic"],
 	"created_at": "2026-01-01T00:00:00Z",
 	"updated_at": "2026-01-01T00:00:00Z"

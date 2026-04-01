@@ -69,17 +69,14 @@ func runPromptCommand(cmd *cobra.Command, args []string) error {
 		return nil
 	}
 
-	// Allow user to review and edit the prompt before sending
-	if promptDef.Engine != "" && promptDef.Engine != "none" {
+	// Allow user to review and edit the prompt before sending (only when --edit flag is set)
+	if editPrompt {
 		editedPrompt, confirmed, err := PromptEditor(finalPrompt, promptDef.Engine)
 		if err != nil {
 			return fmt.Errorf("❌ editor error: %w", err)
 		}
 		if !confirmed {
 			fmt.Println("❌ Cancelled by user (exiting app)")
-			// immediately terminate the entire application instead of
-			// continuing execution. this ensures that pressing cancel in
-			// the prompt editor quits the program as requested.
 			os.Exit(0)
 		}
 		finalPrompt = editedPrompt
@@ -180,11 +177,10 @@ func runWithLLM(prompt, engine string) error {
 // Priority: environment variable > config file
 func registerAvailableEngines(mgr *llm.Manager) {
 	// Register OpenAI if API key is available
+	// Priority: environment variable > config file (with env: prefix support)
 	openaiKey := os.Getenv("OPENAI_API_KEY")
-	if openaiKey == "" && config.AppConfig != nil {
-		if cfg, ok := config.AppConfig.Engines["openai"]; ok {
-			openaiKey = cfg.APIKey
-		}
+	if openaiKey == "" {
+		openaiKey = config.GetEngineAPIKey("openai")
 	}
 	if openaiKey != "" {
 		model := config.GetEngineModel("openai")
@@ -194,10 +190,8 @@ func registerAvailableEngines(mgr *llm.Manager) {
 
 	// Register Gemini if API key is available
 	geminiKey := os.Getenv("GEMINI_API_KEY")
-	if geminiKey == "" && config.AppConfig != nil {
-		if cfg, ok := config.AppConfig.Engines["gemini"]; ok {
-			geminiKey = cfg.APIKey
-		}
+	if geminiKey == "" {
+		geminiKey = config.GetEngineAPIKey("gemini")
 	}
 	if geminiKey != "" {
 		model := config.GetEngineModel("gemini")
@@ -207,10 +201,8 @@ func registerAvailableEngines(mgr *llm.Manager) {
 
 	// Register Claude if API key is available
 	claudeKey := os.Getenv("ANTHROPIC_API_KEY")
-	if claudeKey == "" && config.AppConfig != nil {
-		if cfg, ok := config.AppConfig.Engines["claude"]; ok {
-			claudeKey = cfg.APIKey
-		}
+	if claudeKey == "" {
+		claudeKey = config.GetEngineAPIKey("claude")
 	}
 	if claudeKey != "" {
 		model := config.GetEngineModel("claude")
