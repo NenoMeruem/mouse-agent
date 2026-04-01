@@ -8,6 +8,7 @@ var (
 	dryRun      bool
 	rawOutput   bool
 	noSelection bool
+	editPrompt  bool
 )
 
 func init() {
@@ -15,6 +16,7 @@ func init() {
 	runCmd.Flags().BoolVar(&dryRun, "dry-run", false, "preview prompt without running")
 	runCmd.Flags().BoolVar(&rawOutput, "raw", false, "output raw prompt without formatting")
 	runCmd.Flags().BoolVar(&noSelection, "no-select", false, "skip selection, use defaults only")
+	runCmd.Flags().BoolVar(&editPrompt, "edit", false, "Open prompt in editor before sending")
 }
 
 var runCmd = &cobra.Command{

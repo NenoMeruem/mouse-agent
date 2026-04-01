@@ -6,6 +6,7 @@ import (
 	"fmt"
 	"os"
 	"path/filepath"
+	"strings"
 	"time"
 
 	"github.com/spf13/viper"
@@ -137,4 +138,24 @@ func GetUIOutput() string {
 		return AppConfig.UI.Output
 	}
 	return DefaultUIOutput
+}
+
+// resolveAPIKey resolves an "env:VARNAME" prefix to the actual environment variable value.
+// If the raw string doesn't start with "env:", it is returned as-is.
+func resolveAPIKey(raw string) string {
+	if strings.HasPrefix(raw, "env:") {
+		return os.Getenv(strings.TrimPrefix(raw, "env:"))
+	}
+	return raw
+}
+
+// GetEngineAPIKey returns the resolved API key for the given engine.
+// It handles the "env:VARNAME" prefix by reading the named environment variable.
+func GetEngineAPIKey(engine string) string {
+	if AppConfig != nil && AppConfig.Engines != nil {
+		if cfg, ok := AppConfig.Engines[engine]; ok && cfg.APIKey != "" {
+			return resolveAPIKey(cfg.APIKey)
+		}
+	}
+	return ""
 }

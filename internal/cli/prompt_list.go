@@ -1,6 +1,7 @@
 package cli
 
 import (
+	"encoding/json"
 	"fmt"
 	"text/tabwriter"
 
@@ -8,8 +9,11 @@ import (
 	"github.com/spf13/cobra"
 )
 
+var listOutputFormat string
+
 func init() {
 	promptCmd.AddCommand(promptListCmd)
+	promptListCmd.Flags().StringVar(&listOutputFormat, "output", "", "Output format: json")
 }
 
 var promptListCmd = &cobra.Command{
@@ -19,6 +23,12 @@ var promptListCmd = &cobra.Command{
 		prompts, err := app.GlobalContext.PromptStore.List()
 		if err != nil {
 			return fmt.Errorf("cannot list prompts: %w", err)
+		}
+
+		if listOutputFormat == "json" {
+			enc := json.NewEncoder(cmd.OutOrStdout())
+			enc.SetIndent("", "  ")
+			return enc.Encode(prompts)
 		}
 
 		if len(prompts) == 0 {

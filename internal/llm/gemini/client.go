@@ -8,6 +8,7 @@ import (
 
 	"github.com/google/generative-ai-go/genai"
 	"github.com/sl/prompt-builder-agent/internal/llm"
+	"google.golang.org/api/iterator"
 	"google.golang.org/api/option"
 )
 
@@ -46,9 +47,8 @@ func (c *Client) Stream(ctx context.Context, req llm.Request) (<-chan llm.Chunk,
 	return ch, nil
 }
 
-// stream handles the Gemini API call with streaming
+// stream handles the Gemini API call with real streaming via GenerateContentStream.
 func (c *Client) stream(ctx context.Context, req llm.Request, ch chan<- llm.Chunk) {
-	// Create a new Gemini client with API key option
 	gc, err := genai.NewClient(ctx, option.WithAPIKey(c.apiKey))
 	if err != nil {
 		ch <- llm.Chunk{Err: fmt.Errorf("failed to create Gemini client: %w", err), Done: true}
@@ -56,55 +56,34 @@ func (c *Client) stream(ctx context.Context, req llm.Request, ch chan<- llm.Chun
 	}
 	defer gc.Close()
 
-	// Get the model
 	model := gc.GenerativeModel(c.model)
 
-	// Set timeout context
 	timeoutCtx, cancel := context.WithTimeout(ctx, c.timeout)
 	defer cancel()
 
-	// Generate content using the SDK
-	resp, err := model.GenerateContent(timeoutCtx, genai.Text(req.Prompt))
-	if err != nil {
-		ch <- llm.Chunk{Err: fmt.Errorf("Gemini API error: %w", err), Done: true}
-		return
-	}
-
-	// Extract and stream text from response
-	text := c.extractText(resp)
-	if text != "" {
-		// Split text into chunks for streaming effect
-		// Send in 100-char chunks to simulate streaming
-		chunkSize := 100
-		for i := 0; i < len(text); i += chunkSize {
-			end := i + chunkSize
-			if end > len(text) {
-				end = len(text)
+	iter := model.GenerateContentStream(timeoutCtx, genai.Text(req.Prompt))
+	for {
+		resp, err := iter.Next()
+		if err != nil {
+			if err == iterator.Done {
+				break
 			}
-			ch <- llm.Chunk{Text: text[i:end], Done: false}
+			if timeoutCtx.Err() != nil {
+				break
+			}
+			ch <- llm.Chunk{Err: fmt.Errorf("Gemini stream error: %w", err), Done: true}
+			return
 		}
-	}
-
-	// Send done marker
-	ch <- llm.Chunk{Done: true}
-}
-
-// extractText extracts the text content from Gemini response
-func (c *Client) extractText(resp *genai.GenerateContentResponse) string {
-	if resp == nil {
-		return ""
-	}
-
-	// Iterate through candidates and extract text
-	for _, cand := range resp.Candidates {
-		if cand.Content != nil {
-			for _, part := range cand.Content.Parts {
-				if text, ok := part.(genai.Text); ok {
-					return string(text)
+		for _, cand := range resp.Candidates {
+			if cand.Content != nil {
+				for _, part := range cand.Content.Parts {
+					if text, ok := part.(genai.Text); ok && string(text) != "" {
+						ch <- llm.Chunk{Text: string(text), Done: false}
+					}
 				}
 			}
 		}
 	}
 
-	return ""
+	ch <- llm.Chunk{Done: true}
 }
