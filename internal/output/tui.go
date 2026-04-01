@@ -39,7 +39,14 @@ func (r *TUIRenderer) RenderStream(ch <-chan llm.Chunk) error {
 		}
 	}()
 
-	if _, err := p.Run(); err != nil {
+	_, err := p.Run()
+
+	// Drain any remaining items so the upstream tee goroutine is never
+	// blocked trying to send to ch after the TUI has exited.
+	for range ch {
+	}
+
+	if err != nil {
 		return fmt.Errorf("TUI render error: %w", err)
 	}
 	return nil

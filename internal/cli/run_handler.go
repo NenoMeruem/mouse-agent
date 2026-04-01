@@ -204,13 +204,17 @@ func runWithLLM(prompt, engine string) (string, int64, error) {
 
 	teeCh := make(chan llm.Chunk, 10)
 	go func() {
+		defer close(teeCh)
 		for chunk := range ch {
 			if chunk.Text != "" {
 				responseBuilder.WriteString(chunk.Text)
 			}
-			teeCh <- chunk
+			select {
+			case teeCh <- chunk:
+			case <-ctx.Done():
+				return
+			}
 		}
-		close(teeCh)
 	}()
 
 	// Render the output stream
