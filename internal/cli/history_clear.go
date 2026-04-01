@@ -49,5 +49,12 @@ func parseDuration(s string) (time.Duration, error) {
 		}
 		return time.Duration(days) * 24 * time.Hour, nil
 	}
+	if strings.HasSuffix(s, "h") {
+		hours, err := strconv.Atoi(strings.TrimSuffix(s, "h"))
+		if err != nil {
+			return 0, fmt.Errorf("invalid duration: %s", s)
+		}
+		return time.Duration(hours) * time.Hour, nil
+	}
 	return time.ParseDuration(s)
 }

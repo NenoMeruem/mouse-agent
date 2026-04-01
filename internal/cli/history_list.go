@@ -40,6 +40,5 @@ func renderHistoryTable(w io.Writer, records []models.RunRecord) error {
 		fmt.Fprintf(tw, "%s\t%s\t%s\t%s\t%s\n", id, r.PromptID, r.Engine, duration, created)
 	}
 
-	tw.Flush()
-	return nil
+	return tw.Flush()
 }
