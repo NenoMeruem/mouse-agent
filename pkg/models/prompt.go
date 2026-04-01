@@ -9,6 +9,8 @@ type Prompt struct {
 	Engine      string    `json:"engine"`
 	Template    string    `json:"template"`
 	Variables   []string  `json:"variables"`
+	Params      []string  `json:"params,omitempty"`  // e.g. ["tone","length","complexity"]
+	Icon        string    `json:"icon,omitempty"`    // emoji or icon name
 	CreatedAt   time.Time `json:"created_at"`
 	UpdatedAt   time.Time `json:"updated_at"`
 }

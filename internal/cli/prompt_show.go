@@ -25,6 +25,9 @@ var promptShowCmd = &cobra.Command{
 		}
 
 		fmt.Printf("ID: %s\n", prompt.ID)
+		if prompt.Icon != "" {
+			fmt.Printf("Icon: %s\n", prompt.Icon)
+		}
 		fmt.Printf("Name: %s\n", prompt.Name)
 		fmt.Printf("Engine: %s\n", prompt.Engine)
 		if prompt.Description != "" {
@@ -32,6 +35,9 @@ var promptShowCmd = &cobra.Command{
 		}
 		if len(prompt.Variables) > 0 {
 			fmt.Printf("Variables: %s\n", strings.Join(prompt.Variables, ", "))
+		}
+		if len(prompt.Params) > 0 {
+			fmt.Printf("Params: %s\n", strings.Join(prompt.Params, ", "))
 		}
 		fmt.Println("\nTemplate:")
 		fmt.Println(strings.Repeat("-", 40))
