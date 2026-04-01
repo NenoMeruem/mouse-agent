@@ -23,7 +23,7 @@ var verifyConfigCmd = &cobra.Command{
 	Use:   "verify",
 	Short: "Verify configuration and available LLM engines",
 	RunE: func(cmd *cobra.Command, args []string) error {
-		fmt.Println("🔍 Verifying Prompt Agent Configuration...\n")
+		fmt.Println("🔍 Verifying Prompt Agent Configuration...")
 
 		// Check config file location
 		home, err := os.UserHomeDir()

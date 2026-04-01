@@ -19,8 +19,14 @@ type PromptStore interface {
 	// Get retrieves a prompt by ID. Returns error if not found.
 	Get(id string) (*models.Prompt, error)
 
+	// Update modifies an existing prompt. Returns error if not found.
+	Update(prompt *models.Prompt) error
+
 	// Delete removes a prompt by ID. Returns error if not found.
 	Delete(id string) error
+
+	// Search returns prompts whose name or template contain the query string.
+	Search(query string) ([]models.Prompt, error)
 }
 
 // HistoryStore defines operations for storing and retrieving run history records.

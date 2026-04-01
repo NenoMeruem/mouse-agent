@@ -6,6 +6,7 @@ import (
 	"os"
 	"path/filepath"
 	"sort"
+	"strings"
 	"sync"
 	"time"
 
@@ -206,6 +207,34 @@ func (s *JSONStore) Get(id string) (*models.Prompt, error) {
 		return nil, fmt.Errorf("prompt not found: %s", id)
 	}
 	return prompt, nil
+}
+
+func (s *JSONStore) Update(prompt *models.Prompt) error {
+	s.mu.Lock()
+	defer s.mu.Unlock()
+	if _, exists := s.prompts[prompt.ID]; !exists {
+		return fmt.Errorf("prompt not found: %s", prompt.ID)
+	}
+	prompt.UpdatedAt = time.Now()
+	s.prompts[prompt.ID] = prompt
+	return s.save()
+}
+
+func (s *JSONStore) Search(query string) ([]models.Prompt, error) {
+	s.mu.RLock()
+	defer s.mu.RUnlock()
+	query = strings.ToLower(query)
+	var results []models.Prompt
+	for _, p := range s.prompts {
+		if strings.Contains(strings.ToLower(p.Name), query) ||
+			strings.Contains(strings.ToLower(p.Template), query) {
+			results = append(results, *p)
+		}
+	}
+	sort.Slice(results, func(i, j int) bool {
+		return results[i].CreatedAt.After(results[j].CreatedAt)
+	})
+	return results, nil
 }
 
 func (s *JSONStore) Delete(id string) error {

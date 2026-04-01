@@ -406,6 +406,97 @@ func TestHistoryListNoLimit(t *testing.T) {
 	}
 }
 
+// TestUpdate creates a prompt, updates its name and description, and verifies Get returns updated values.
+func TestUpdate(t *testing.T) {
+	store := newTestSQLiteStore(t)
+
+	p := &models.Prompt{
+		ID:          "upd-1",
+		Name:        "Original Name",
+		Description: "Original desc",
+		Engine:      "openai",
+		Template:    "Hello {{name}}",
+		Variables:   []string{"name"},
+	}
+	if err := store.Create(p); err != nil {
+		t.Fatalf("Create failed: %v", err)
+	}
+
+	p.Name = "Updated Name"
+	p.Description = "Updated desc"
+	if err := store.Update(p); err != nil {
+		t.Fatalf("Update failed: %v", err)
+	}
+
+	got, err := store.Get("upd-1")
+	if err != nil {
+		t.Fatalf("Get after Update failed: %v", err)
+	}
+	if got.Name != "Updated Name" {
+		t.Errorf("Name: want %q, got %q", "Updated Name", got.Name)
+	}
+	if got.Description != "Updated desc" {
+		t.Errorf("Description: want %q, got %q", "Updated desc", got.Description)
+	}
+	if got.UpdatedAt.IsZero() {
+		t.Error("UpdatedAt should not be zero after update")
+	}
+}
+
+// TestUpdateNotFound verifies that updating a non-existent ID returns an error.
+func TestUpdateNotFound(t *testing.T) {
+	store := newTestSQLiteStore(t)
+
+	p := &models.Prompt{
+		ID:     "ghost",
+		Name:   "Ghost",
+		Engine: "openai",
+		Template: "T",
+	}
+	if err := store.Update(p); err == nil {
+		t.Error("expected error for nonexistent ID, got nil")
+	}
+}
+
+// TestSearch creates two prompts and verifies Search returns only the matching one.
+func TestSearch(t *testing.T) {
+	store := newTestSQLiteStore(t)
+
+	p1 := &models.Prompt{
+		ID:       "s1",
+		Name:     "Explain Code",
+		Engine:   "openai",
+		Template: "Explain this code snippet",
+		CreatedAt: time.Now(),
+		UpdatedAt: time.Now(),
+	}
+	p2 := &models.Prompt{
+		ID:       "s2",
+		Name:     "Summarize Text",
+		Engine:   "gemini",
+		Template: "Summarize the following text",
+		CreatedAt: time.Now().Add(-time.Minute),
+		UpdatedAt: time.Now().Add(-time.Minute),
+	}
+	if err := store.Create(p1); err != nil {
+		t.Fatalf("Create p1 failed: %v", err)
+	}
+	if err := store.Create(p2); err != nil {
+		t.Fatalf("Create p2 failed: %v", err)
+	}
+
+	results, err := store.Search("Explain")
+	if err != nil {
+		t.Fatalf("Search failed: %v", err)
+	}
+	if len(results) != 1 {
+		t.Fatalf("expected 1 result, got %d", len(results))
+	}
+	if results[0].ID != "s1" {
+		t.Errorf("expected result ID %q, got %q", "s1", results[0].ID)
+	}
+}
+
 // TestMigrateFromJSONAlreadyMigrated verifies migration is skipped when SQLite has data.
 func TestMigrateFromJSONAlreadyMigrated(t *testing.T) {
 	dir := t.TempDir()
