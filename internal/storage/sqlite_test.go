@@ -2,6 +2,7 @@ package storage
 
 import (
 	"encoding/json"
+	"fmt"
 	"os"
 	"path/filepath"
 	"testing"
@@ -213,6 +214,195 @@ func TestMigrateFromJSONNoFile(t *testing.T) {
 	err := MigrateFromJSON(store, "/nonexistent/path/prompts.json")
 	if err != nil {
 		t.Errorf("expected nil error when JSON missing, got %v", err)
+	}
+}
+
+// --- HistoryStore tests -----------------------------------------------------
+
+// newTestHistoryStore creates a SQLiteHistoryStore backed by a temporary DB,
+// and inserts a seed prompt so foreign-key constraints can be satisfied.
+func newTestHistoryStore(t *testing.T) (*SQLiteHistoryStore, *SQLiteStore) {
+	t.Helper()
+	store := newTestSQLiteStore(t)
+
+	seed := &models.Prompt{
+		ID: "seed-prompt", Name: "Seed", Engine: "openai", Template: "T",
+	}
+	if err := store.Create(seed); err != nil {
+		t.Fatalf("seed Create failed: %v", err)
+	}
+
+	hs, err := NewSQLiteHistoryStore(store.DB())
+	if err != nil {
+		t.Fatalf("NewSQLiteHistoryStore failed: %v", err)
+	}
+	return hs, store
+}
+
+// TestHistoryAppendAndList appends a record and verifies it can be listed back.
+func TestHistoryAppendAndList(t *testing.T) {
+	hs, _ := newTestHistoryStore(t)
+
+	rec := &models.RunRecord{
+		ID:          "run-1",
+		PromptID:    "seed-prompt",
+		Engine:      "openai",
+		InputText:   "hello",
+		FinalPrompt: "explain hello",
+		Response:    "Hello is a greeting.",
+		DurationMs:  42,
+	}
+	if err := hs.Append(rec); err != nil {
+		t.Fatalf("Append failed: %v", err)
+	}
+
+	records, err := hs.List(10, "")
+	if err != nil {
+		t.Fatalf("List failed: %v", err)
+	}
+	if len(records) != 1 {
+		t.Fatalf("expected 1 record, got %d", len(records))
+	}
+	got := records[0]
+	if got.ID != rec.ID {
+		t.Errorf("ID: want %q, got %q", rec.ID, got.ID)
+	}
+	if got.PromptID != rec.PromptID {
+		t.Errorf("PromptID: want %q, got %q", rec.PromptID, got.PromptID)
+	}
+	if got.Response != rec.Response {
+		t.Errorf("Response: want %q, got %q", rec.Response, got.Response)
+	}
+	if got.DurationMs != rec.DurationMs {
+		t.Errorf("DurationMs: want %d, got %d", rec.DurationMs, got.DurationMs)
+	}
+	if got.CreatedAt.IsZero() {
+		t.Error("CreatedAt should not be zero")
+	}
+}
+
+// TestHistoryListByPromptID appends records for two different prompt IDs and
+// verifies that filtering by promptID returns only matching records.
+func TestHistoryListByPromptID(t *testing.T) {
+	hs, store := newTestHistoryStore(t)
+
+	// Create a second prompt for the foreign key.
+	other := &models.Prompt{
+		ID: "other-prompt", Name: "Other", Engine: "gemini", Template: "T2",
+	}
+	if err := store.Create(other); err != nil {
+		t.Fatalf("Create other prompt failed: %v", err)
+	}
+
+	for _, r := range []models.RunRecord{
+		{ID: "r1", PromptID: "seed-prompt", Engine: "openai", FinalPrompt: "fp1"},
+		{ID: "r2", PromptID: "seed-prompt", Engine: "openai", FinalPrompt: "fp2"},
+		{ID: "r3", PromptID: "other-prompt", Engine: "gemini", FinalPrompt: "fp3"},
+	} {
+		rc := r
+		if err := hs.Append(&rc); err != nil {
+			t.Fatalf("Append %q failed: %v", r.ID, err)
+		}
+	}
+
+	got, err := hs.List(10, "seed-prompt")
+	if err != nil {
+		t.Fatalf("List by promptID failed: %v", err)
+	}
+	if len(got) != 2 {
+		t.Fatalf("expected 2 records for seed-prompt, got %d", len(got))
+	}
+	for _, r := range got {
+		if r.PromptID != "seed-prompt" {
+			t.Errorf("unexpected PromptID %q in filtered list", r.PromptID)
+		}
+	}
+}
+
+// TestHistorySearch appends records and verifies Search finds by final_prompt text.
+func TestHistorySearch(t *testing.T) {
+	hs, _ := newTestHistoryStore(t)
+
+	records := []models.RunRecord{
+		{ID: "s1", PromptID: "seed-prompt", Engine: "openai", FinalPrompt: "explain the pipeline failure"},
+		{ID: "s2", PromptID: "seed-prompt", Engine: "openai", FinalPrompt: "summarize the meeting notes"},
+		{ID: "s3", PromptID: "seed-prompt", Engine: "openai", FinalPrompt: "pipeline diagnostics"},
+	}
+	for i := range records {
+		if err := hs.Append(&records[i]); err != nil {
+			t.Fatalf("Append failed: %v", err)
+		}
+	}
+
+	got, err := hs.Search("pipeline")
+	if err != nil {
+		t.Fatalf("Search failed: %v", err)
+	}
+	if len(got) != 2 {
+		t.Fatalf("expected 2 results for 'pipeline', got %d", len(got))
+	}
+}
+
+// TestHistoryClear appends records with different timestamps and verifies
+// that Clear removes only records before the cutoff time.
+func TestHistoryClear(t *testing.T) {
+	hs, _ := newTestHistoryStore(t)
+
+	base := time.Now().UTC().Add(-2 * time.Hour)
+	cutoff := base.Add(time.Hour)
+
+	for i, ts := range []time.Time{
+		base,                       // before cutoff — should be cleared
+		base.Add(30 * time.Minute), // before cutoff — should be cleared
+		cutoff.Add(time.Minute),    // after cutoff — should remain
+	} {
+		r := &models.RunRecord{
+			ID:          fmt.Sprintf("c%d", i),
+			PromptID:    "seed-prompt",
+			Engine:      "openai",
+			FinalPrompt: "fp",
+			CreatedAt:   ts,
+		}
+		if err := hs.Append(r); err != nil {
+			t.Fatalf("Append failed: %v", err)
+		}
+	}
+
+	if err := hs.Clear(cutoff); err != nil {
+		t.Fatalf("Clear failed: %v", err)
+	}
+
+	remaining, err := hs.List(0, "")
+	if err != nil {
+		t.Fatalf("List after Clear failed: %v", err)
+	}
+	if len(remaining) != 1 {
+		t.Fatalf("expected 1 record after Clear, got %d", len(remaining))
+	}
+}
+
+// TestHistoryListNoLimit verifies that limit <= 0 returns all records.
+func TestHistoryListNoLimit(t *testing.T) {
+	hs, _ := newTestHistoryStore(t)
+
+	for i := 0; i < 5; i++ {
+		r := &models.RunRecord{
+			ID:          fmt.Sprintf("nl%d", i),
+			PromptID:    "seed-prompt",
+			Engine:      "openai",
+			FinalPrompt: "fp",
+		}
+		if err := hs.Append(r); err != nil {
+			t.Fatalf("Append failed: %v", err)
+		}
+	}
+
+	all, err := hs.List(0, "")
+	if err != nil {
+		t.Fatalf("List(0) failed: %v", err)
+	}
+	if len(all) != 5 {
+		t.Errorf("expected 5 records with limit=0, got %d", len(all))
 	}
 }
 

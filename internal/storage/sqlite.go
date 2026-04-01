@@ -20,6 +20,8 @@ CREATE TABLE IF NOT EXISTS prompts (
     engine      TEXT NOT NULL,
     template    TEXT NOT NULL,
     variables   TEXT DEFAULT '[]',
+    params      TEXT DEFAULT '[]',
+    icon        TEXT DEFAULT '',
     created_at  DATETIME NOT NULL,
     updated_at  DATETIME NOT NULL
 );`
@@ -40,6 +42,11 @@ func NewSQLiteStore(dbPath string) (*SQLiteStore, error) {
 	db, err := sql.Open("sqlite", dbPath)
 	if err != nil {
 		return nil, fmt.Errorf("cannot open database: %w", err)
+	}
+
+	if _, err := db.Exec("PRAGMA foreign_keys = ON"); err != nil {
+		db.Close()
+		return nil, fmt.Errorf("cannot enable foreign keys: %w", err)
 	}
 
 	if _, err := db.Exec(createPromptsTable); err != nil {
@@ -161,7 +168,7 @@ func scanPrompt(row scanner) (*models.Prompt, error) {
 	}
 
 	if err := json.Unmarshal([]byte(varsJSON), &p.Variables); err != nil {
-		p.Variables = []string{}
+		return nil, fmt.Errorf("cannot unmarshal variables: %w", err)
 	}
 
 	var err error

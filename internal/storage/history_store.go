@@ -71,24 +71,31 @@ func (h *SQLiteHistoryStore) Append(record *models.RunRecord) error {
 
 // List returns run records ordered by created_at DESC. If promptID is non-empty,
 // only records for that prompt are returned. At most limit records are returned.
+// If limit <= 0, all records are returned.
 func (h *SQLiteHistoryStore) List(limit int, promptID string) ([]models.RunRecord, error) {
 	var (
 		rows *sql.Rows
 		err  error
 	)
 
+	// SQLite treats LIMIT -1 as unlimited; LIMIT 0 returns zero rows.
+	sqlLimit := limit
+	if limit <= 0 {
+		sqlLimit = -1
+	}
+
 	if promptID != "" {
 		rows, err = h.db.Query(
 			`SELECT id, prompt_id, engine, input_text, final_prompt, response, duration_ms, error, created_at
 			 FROM run_history WHERE prompt_id = ?
 			 ORDER BY created_at DESC LIMIT ?`,
-			promptID, limit,
+			promptID, sqlLimit,
 		)
 	} else {
 		rows, err = h.db.Query(
 			`SELECT id, prompt_id, engine, input_text, final_prompt, response, duration_ms, error, created_at
 			 FROM run_history ORDER BY created_at DESC LIMIT ?`,
-			limit,
+			sqlLimit,
 		)
 	}
 	if err != nil {
