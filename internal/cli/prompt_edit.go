@@ -5,6 +5,7 @@ import (
 	"fmt"
 	"os"
 	"os/exec"
+	"strings"
 
 	"github.com/sl/prompt-builder-agent/internal/app"
 	"github.com/sl/prompt-builder-agent/pkg/models"
@@ -55,12 +56,13 @@ func promptEditCommand(cmd *cobra.Command, args []string) error {
 		editor = "vi"
 	}
 
-	editorCmd := exec.Command(editor, tmpFile.Name())
+	parts := strings.Fields(editor)
+	editorCmd := exec.Command(parts[0], append(parts[1:], tmpFile.Name())...)
 	editorCmd.Stdin = os.Stdin
 	editorCmd.Stdout = os.Stdout
 	editorCmd.Stderr = os.Stderr
 	if err := editorCmd.Run(); err != nil {
-		return fmt.Errorf("editor exited with error: %w", err)
+		return fmt.Errorf("editor failed: %w", err)
 	}
 
 	edited, err := os.ReadFile(tmpFile.Name())
@@ -71,6 +73,10 @@ func promptEditCommand(cmd *cobra.Command, args []string) error {
 	var updated models.Prompt
 	if err := json.Unmarshal(edited, &updated); err != nil {
 		return fmt.Errorf("cannot parse edited JSON: %w", err)
+	}
+
+	if updated.ID != id {
+		return fmt.Errorf("cannot change prompt ID: was %q, got %q", id, updated.ID)
 	}
 
 	if err := app.GlobalContext.PromptStore.Update(&updated); err != nil {

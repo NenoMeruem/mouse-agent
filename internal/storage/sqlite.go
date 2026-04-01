@@ -153,10 +153,16 @@ func (s *SQLiteStore) Delete(id string) error {
 // Update modifies an existing prompt. Returns error if not found.
 func (s *SQLiteStore) Update(prompt *models.Prompt) error {
 	prompt.UpdatedAt = time.Now()
+
+	varsJSON, err := json.Marshal(prompt.Variables)
+	if err != nil {
+		return fmt.Errorf("cannot marshal variables: %w", err)
+	}
+
 	result, err := s.db.Exec(
 		`UPDATE prompts SET name=?, description=?, engine=?, template=?, variables=?, updated_at=? WHERE id=?`,
 		prompt.Name, prompt.Description, prompt.Engine, prompt.Template,
-		mustMarshalJSON(prompt.Variables), prompt.UpdatedAt.UTC().Format(time.RFC3339Nano),
+		string(varsJSON), prompt.UpdatedAt.UTC().Format(time.RFC3339Nano),
 		prompt.ID,
 	)
 	if err != nil {
@@ -171,6 +177,9 @@ func (s *SQLiteStore) Update(prompt *models.Prompt) error {
 
 // Search returns prompts whose name or template contain the query string (case-insensitive LIKE).
 func (s *SQLiteStore) Search(query string) ([]models.Prompt, error) {
+	if query == "" {
+		return []models.Prompt{}, nil
+	}
 	pattern := "%" + query + "%"
 	rows, err := s.db.Query(
 		`SELECT id, name, description, engine, template, variables, created_at, updated_at
@@ -187,11 +196,6 @@ func (s *SQLiteStore) Search(query string) ([]models.Prompt, error) {
 }
 
 // --- helpers ----------------------------------------------------------------
-
-func mustMarshalJSON(v interface{}) string {
-	b, _ := json.Marshal(v)
-	return string(b)
-}
 
 type scanner interface {
 	Scan(dest ...any) error
