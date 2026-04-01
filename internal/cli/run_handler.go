@@ -75,6 +75,21 @@ func runPromptCommand(cmd *cobra.Command, args []string) error {
 		return fmt.Errorf("❌ cannot build prompt: %w", err)
 	}
 
+	// Inject tone/length/complexity param suffixes into the prompt
+	paramValues := map[string]string{}
+	if runTone != "" {
+		paramValues["tone"] = runTone
+	}
+	if runLength != "" {
+		paramValues["length"] = runLength
+	}
+	if runComplexity != "" {
+		paramValues["complexity"] = runComplexity
+	}
+	if len(paramValues) > 0 {
+		finalPrompt = promptlib.InjectParams(finalPrompt, paramValues)
+	}
+
 	// If dry-run, just preview the prompt without API call
 	if dryRun {
 		fmt.Printf("🔍 DRY RUN - Final Prompt:\n%s\n", finalPrompt)
