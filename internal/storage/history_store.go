@@ -33,10 +33,11 @@ type SQLiteHistoryStore struct {
 
 // NewSQLiteHistoryStore creates a new history store sharing the given DB connection.
 // It initialises the run_history table and indices if they don't exist.
-func NewSQLiteHistoryStore(db *sql.DB) *SQLiteHistoryStore {
-	// Best-effort table creation; callers should check for errors via Append.
-	db.Exec(createHistoryTable)
-	return &SQLiteHistoryStore{db: db}
+func NewSQLiteHistoryStore(db *sql.DB) (*SQLiteHistoryStore, error) {
+	if _, err := db.Exec(createHistoryTable); err != nil {
+		return nil, fmt.Errorf("cannot create history table: %w", err)
+	}
+	return &SQLiteHistoryStore{db: db}, nil
 }
 
 // Append inserts a new run record into the history table.

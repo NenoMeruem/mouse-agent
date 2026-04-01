@@ -40,7 +40,10 @@ func InitializeContext() error {
 		fmt.Printf("warning: JSON migration failed: %v\n", err)
 	}
 
-	historyStore := storage.NewSQLiteHistoryStore(store.DB())
+	historyStore, err := storage.NewSQLiteHistoryStore(store.DB())
+	if err != nil {
+		return fmt.Errorf("cannot create history store: %w", err)
+	}
 
 	builder := prompt.NewSimpleBuilder()
 	selectionProvider := selection.NewProvider()
