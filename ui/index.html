@@ -1,0 +1,63 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>Prompt Agent</title>
+  <link rel="stylesheet" href="style.css" />
+</head>
+<body>
+  <div id="app">
+    <!-- Left panel: recipe list -->
+    <div id="sidebar">
+      <div id="recipe-list">
+        <!-- Populated by JS -->
+      </div>
+    </div>
+
+    <!-- Right panel: params + output -->
+    <div id="main">
+      <!-- Param pills row -->
+      <div id="params-row">
+        <div class="param-group" id="param-tone" style="display:none">
+          <span class="param-label">Tone</span>
+          <div class="pills">
+            <button class="pill" data-param="tone" data-value="professional">Professional</button>
+            <button class="pill active" data-param="tone" data-value="casual">Casual</button>
+            <button class="pill" data-param="tone" data-value="concise">Concise</button>
+          </div>
+        </div>
+        <div class="param-group" id="param-length" style="display:none">
+          <span class="param-label">Length</span>
+          <div class="pills">
+            <button class="pill active" data-param="length" data-value="short">Short</button>
+            <button class="pill" data-param="length" data-value="medium">Medium</button>
+            <button class="pill" data-param="length" data-value="long">Long</button>
+          </div>
+        </div>
+        <div class="param-group" id="param-complexity" style="display:none">
+          <span class="param-label">Complexity</span>
+          <div class="pills">
+            <button class="pill" data-param="complexity" data-value="simple">Simple</button>
+            <button class="pill active" data-param="complexity" data-value="normal">Normal</button>
+            <button class="pill" data-param="complexity" data-value="technical">Technical</button>
+          </div>
+        </div>
+      </div>
+
+      <!-- Output area -->
+      <div id="output-wrapper">
+        <div id="output" class="placeholder">Select a recipe and press Run&hellip;</div>
+      </div>
+
+      <!-- Action bar -->
+      <div id="action-bar">
+        <button id="run-btn" disabled>&#9654; Run</button>
+        <button id="copy-btn" style="display:none">&#8998; Copy</button>
+        <button id="close-btn">&#10005;</button>
+      </div>
+    </div>
+  </div>
+  <script type="module" src="main.js"></script>
+</body>
+</html>

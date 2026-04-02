@@ -1,0 +1,47 @@
+{
+  "productName": "Prompt Agent",
+  "version": "0.1.0",
+  "identifier": "com.prompt-agent.app",
+  "build": {
+    "frontendDist": "../ui"
+  },
+  "bundle": {
+    "active": true,
+    "targets": "all",
+    "icon": [],
+    "externalBin": ["binaries/prompt-agent"]
+  },
+  "app": {
+    "windows": [
+      {
+        "label": "overlay",
+        "title": "Prompt Agent",
+        "width": 720,
+        "height": 280,
+        "resizable": false,
+        "decorations": false,
+        "alwaysOnTop": true,
+        "visible": false,
+        "transparent": true,
+        "skipTaskbar": true
+      }
+    ],
+    "security": {
+      "csp": null
+    }
+  },
+  "plugins": {
+    "shell": {
+      "open": false,
+      "scope": [
+        {
+          "name": "binaries/prompt-agent",
+          "sidecar": true,
+          "args": true
+        }
+      ]
+    },
+    "global-shortcut": {},
+    "clipboard-manager": {}
+  }
+}
