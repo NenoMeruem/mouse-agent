@@ -19,6 +19,8 @@ var (
 	addDescription string
 	addEngine      string
 	addTemplate    string
+	addParams      []string
+	addIcon        string
 )
 
 func init() {
@@ -30,6 +32,8 @@ func init() {
 	promptAddCmd.Flags().StringVar(&addDescription, "description", "", "Prompt description")
 	promptAddCmd.Flags().StringVar(&addEngine, "engine", "openai", "LLM engine (openai or gemini)")
 	promptAddCmd.Flags().StringVar(&addTemplate, "template", "", "Prompt template")
+	promptAddCmd.Flags().StringSliceVar(&addParams, "params", nil, "Supported param keys, e.g. tone,length,complexity")
+	promptAddCmd.Flags().StringVar(&addIcon, "icon", "", "Icon emoji or name for this prompt")
 }
 
 var promptAddCmd = &cobra.Command{
@@ -72,6 +76,8 @@ func addPromptFromFlags() error {
 		Engine:      addEngine,
 		Template:    addTemplate,
 		Variables:   variables,
+		Params:      addParams,
+		Icon:        addIcon,
 	}
 
 	if err := app.GlobalContext.PromptStore.Create(prompt); err != nil {
@@ -81,6 +87,9 @@ func addPromptFromFlags() error {
 	fmt.Printf("✓ Prompt '%s' created\n", addID)
 	if len(variables) > 0 {
 		fmt.Printf("  Variables: %v\n", variables)
+	}
+	if len(addParams) > 0 {
+		fmt.Printf("  Params: %v\n", addParams)
 	}
 	return nil
 }

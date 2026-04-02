@@ -5,10 +5,13 @@ import (
 )
 
 var (
-	dryRun      bool
-	rawOutput   bool
-	noSelection bool
-	editPrompt  bool
+	dryRun        bool
+	rawOutput     bool
+	noSelection   bool
+	editPrompt    bool
+	runTone       string
+	runLength     string
+	runComplexity string
 )
 
 func init() {
@@ -17,6 +20,9 @@ func init() {
 	runCmd.Flags().BoolVar(&rawOutput, "raw", false, "output raw prompt without formatting")
 	runCmd.Flags().BoolVar(&noSelection, "no-select", false, "skip selection, use defaults only")
 	runCmd.Flags().BoolVar(&editPrompt, "edit", false, "Open prompt in editor before sending")
+	runCmd.Flags().StringVar(&runTone, "tone", "", "Tone: professional, casual, concise")
+	runCmd.Flags().StringVar(&runLength, "length", "", "Length: short, medium, long")
+	runCmd.Flags().StringVar(&runComplexity, "complexity", "", "Complexity: simple, normal, technical")
 }
 
 var runCmd = &cobra.Command{

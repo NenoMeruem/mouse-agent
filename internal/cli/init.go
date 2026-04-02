@@ -5,6 +5,8 @@ import (
 	"os"
 	"path/filepath"
 
+	promptlib "github.com/sl/prompt-builder-agent/internal/prompt"
+	"github.com/sl/prompt-builder-agent/internal/storage"
 	"github.com/spf13/cobra"
 )
 
@@ -43,25 +45,32 @@ ui:
 			}
 			fmt.Println("Config created at:", configPath)
 		}
-		// include a minimal example entry so users know the format
-		examplePromptsPath := filepath.Join(dir, "prompts.json")
-		examplePrompts := `[
-  {
-	"id": "example",
-	"name": "Example Prompt",
-	"description": "This is a sample prompt. Edit or delete it.",
-	"engine": "openai",
-	"template": "Write a short description of {{topic}}.",
-	"variables": ["topic"],
-	"created_at": "2026-01-01T00:00:00Z",
-	"updated_at": "2026-01-01T00:00:00Z"
-  }
-]
-`
-		if err := os.WriteFile(examplePromptsPath, []byte(examplePrompts), 0644); err != nil {
-			return fmt.Errorf("cannot write example prompts file: %w", err)
+
+		// Seed default recipes into SQLite store
+		dbPath := storage.GetDefaultDBPath()
+		store, err := storage.NewSQLiteStore(dbPath)
+		if err != nil {
+			return fmt.Errorf("cannot open store: %w", err)
 		}
-		fmt.Println("Example prompts created at:", examplePromptsPath)
+
+		existing, err := store.List()
+		if err != nil {
+			return fmt.Errorf("cannot list prompts: %w", err)
+		}
+
+		if len(existing) == 0 {
+			for _, recipe := range promptlib.DefaultRecipes() {
+				r := recipe // copy
+				if err := store.Create(&r); err != nil {
+					// skip if already exists (e.g. concurrent init)
+					fmt.Printf("warning: could not seed recipe %s: %v\n", recipe.ID, err)
+				}
+			}
+			fmt.Printf("Seeded %d default recipes.\n", len(promptlib.DefaultRecipes()))
+		} else {
+			fmt.Printf("Store already has %d prompts, skipping seed.\n", len(existing))
+		}
+
 		return nil
 	},
 }

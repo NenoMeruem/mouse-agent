@@ -7,8 +7,8 @@ import (
 )
 
 // TestInitCommandCreatesFiles ensures the init command bootstraps both
-// configuration and prompts files in the user's home directory.  We override
-// $HOME with a temporary directory so the test is hermetic.
+// the config file and the SQLite store with default recipes.
+// We override $HOME with a temporary directory so the test is hermetic.
 func TestInitCommandCreatesFiles(t *testing.T) {
 	tmp, err := os.MkdirTemp("", "prompt-agent-test")
 	if err != nil {
@@ -31,16 +31,9 @@ func TestInitCommandCreatesFiles(t *testing.T) {
 		t.Fatalf("config.yaml not created: %v", err)
 	}
 
-	promptsPath := pathfile.Join(dir, "prompts.json")
-	if _, err := os.Stat(promptsPath); err != nil {
-		t.Fatalf("prompts.json not created: %v", err)
-	}
-
-	data, err := os.ReadFile(promptsPath)
-	if err != nil {
-		t.Fatalf("unable to read prompts.json: %v", err)
-	}
-	if len(data) == 0 {
-		t.Fatal("prompts.json should contain sample content")
+	// Storage is now SQLite — verify prompts.db was created and seeded
+	dbPath := pathfile.Join(dir, "prompts.db")
+	if _, err := os.Stat(dbPath); err != nil {
+		t.Fatalf("prompts.db not created: %v", err)
 	}
 }

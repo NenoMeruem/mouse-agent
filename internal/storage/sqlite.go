@@ -88,15 +88,22 @@ func (s *SQLiteStore) Create(prompt *models.Prompt) error {
 		return fmt.Errorf("cannot marshal variables: %w", err)
 	}
 
+	paramsJSON, err := json.Marshal(prompt.Params)
+	if err != nil {
+		return fmt.Errorf("cannot marshal params: %w", err)
+	}
+
 	_, err = s.db.Exec(
-		`INSERT INTO prompts (id, name, description, engine, template, variables, created_at, updated_at)
-		 VALUES (?, ?, ?, ?, ?, ?, ?, ?)`,
+		`INSERT INTO prompts (id, name, description, engine, template, variables, params, icon, created_at, updated_at)
+		 VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
 		prompt.ID,
 		prompt.Name,
 		prompt.Description,
 		prompt.Engine,
 		prompt.Template,
 		string(varsJSON),
+		string(paramsJSON),
+		prompt.Icon,
 		prompt.CreatedAt.UTC().Format(time.RFC3339Nano),
 		prompt.UpdatedAt.UTC().Format(time.RFC3339Nano),
 	)
@@ -109,7 +116,7 @@ func (s *SQLiteStore) Create(prompt *models.Prompt) error {
 // List returns all prompts sorted by created_at descending.
 func (s *SQLiteStore) List() ([]models.Prompt, error) {
 	rows, err := s.db.Query(
-		`SELECT id, name, description, engine, template, variables, created_at, updated_at
+		`SELECT id, name, description, engine, template, variables, params, icon, created_at, updated_at
 		 FROM prompts ORDER BY created_at DESC`,
 	)
 	if err != nil {
@@ -123,7 +130,7 @@ func (s *SQLiteStore) List() ([]models.Prompt, error) {
 // Get retrieves a single prompt by ID. Returns an error if not found.
 func (s *SQLiteStore) Get(id string) (*models.Prompt, error) {
 	row := s.db.QueryRow(
-		`SELECT id, name, description, engine, template, variables, created_at, updated_at
+		`SELECT id, name, description, engine, template, variables, params, icon, created_at, updated_at
 		 FROM prompts WHERE id = ?`, id,
 	)
 
@@ -159,10 +166,16 @@ func (s *SQLiteStore) Update(prompt *models.Prompt) error {
 		return fmt.Errorf("cannot marshal variables: %w", err)
 	}
 
+	paramsJSON, err := json.Marshal(prompt.Params)
+	if err != nil {
+		return fmt.Errorf("cannot marshal params: %w", err)
+	}
+
 	result, err := s.db.Exec(
-		`UPDATE prompts SET name=?, description=?, engine=?, template=?, variables=?, updated_at=? WHERE id=?`,
+		`UPDATE prompts SET name=?, description=?, engine=?, template=?, variables=?, params=?, icon=?, updated_at=? WHERE id=?`,
 		prompt.Name, prompt.Description, prompt.Engine, prompt.Template,
-		string(varsJSON), prompt.UpdatedAt.UTC().Format(time.RFC3339Nano),
+		string(varsJSON), string(paramsJSON), prompt.Icon,
+		prompt.UpdatedAt.UTC().Format(time.RFC3339Nano),
 		prompt.ID,
 	)
 	if err != nil {
@@ -182,7 +195,7 @@ func (s *SQLiteStore) Search(query string) ([]models.Prompt, error) {
 	}
 	pattern := "%" + query + "%"
 	rows, err := s.db.Query(
-		`SELECT id, name, description, engine, template, variables, created_at, updated_at
+		`SELECT id, name, description, engine, template, variables, params, icon, created_at, updated_at
 		 FROM prompts WHERE name LIKE ? OR template LIKE ?
 		 ORDER BY created_at DESC`,
 		pattern, pattern,
@@ -203,17 +216,21 @@ type scanner interface {
 
 func scanPrompt(row scanner) (*models.Prompt, error) {
 	var p models.Prompt
-	var varsJSON, createdStr, updatedStr string
+	var varsJSON, paramsJSON, createdStr, updatedStr string
 
 	if err := row.Scan(
 		&p.ID, &p.Name, &p.Description, &p.Engine, &p.Template,
-		&varsJSON, &createdStr, &updatedStr,
+		&varsJSON, &paramsJSON, &p.Icon, &createdStr, &updatedStr,
 	); err != nil {
 		return nil, err
 	}
 
 	if err := json.Unmarshal([]byte(varsJSON), &p.Variables); err != nil {
 		return nil, fmt.Errorf("cannot unmarshal variables: %w", err)
+	}
+
+	if err := json.Unmarshal([]byte(paramsJSON), &p.Params); err != nil {
+		return nil, fmt.Errorf("cannot unmarshal params: %w", err)
 	}
 
 	var err error

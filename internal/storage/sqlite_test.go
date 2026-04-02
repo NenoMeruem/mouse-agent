@@ -63,6 +63,37 @@ func TestSQLiteCreate(t *testing.T) {
 	}
 }
 
+// TestCreateWithParams verifies that Params and Icon are stored and retrieved correctly.
+func TestCreateWithParams(t *testing.T) {
+	store := newTestSQLiteStore(t)
+
+	p := &models.Prompt{
+		ID:        "params-1",
+		Name:      "Parameterised Prompt",
+		Engine:    "gemini",
+		Template:  "Explain {{selection}}",
+		Variables: []string{"selection"},
+		Params:    []string{"tone", "length"},
+		Icon:      "📝",
+	}
+
+	if err := store.Create(p); err != nil {
+		t.Fatalf("Create failed: %v", err)
+	}
+
+	got, err := store.Get("params-1")
+	if err != nil {
+		t.Fatalf("Get failed: %v", err)
+	}
+
+	if len(got.Params) != 2 || got.Params[0] != "tone" || got.Params[1] != "length" {
+		t.Errorf("Params: want [tone length], got %v", got.Params)
+	}
+	if got.Icon != "📝" {
+		t.Errorf("Icon: want %q, got %q", "📝", got.Icon)
+	}
+}
+
 // TestSQLiteCreateDuplicate verifies that inserting the same ID twice fails.
 func TestSQLiteCreateDuplicate(t *testing.T) {
 	store := newTestSQLiteStore(t)
@@ -455,6 +486,40 @@ func TestUpdateNotFound(t *testing.T) {
 	}
 	if err := store.Update(p); err == nil {
 		t.Error("expected error for nonexistent ID, got nil")
+	}
+}
+
+// TestUpdateParamsAndIcon verifies that Params and Icon can be updated.
+func TestUpdateParamsAndIcon(t *testing.T) {
+	store := newTestSQLiteStore(t)
+
+	p := &models.Prompt{
+		ID:       "upd-params",
+		Name:     "Original",
+		Engine:   "gemini",
+		Template: "T",
+		Params:   []string{"tone"},
+		Icon:     "🔧",
+	}
+	if err := store.Create(p); err != nil {
+		t.Fatalf("Create failed: %v", err)
+	}
+
+	p.Params = []string{"tone", "length", "complexity"}
+	p.Icon = "📝"
+	if err := store.Update(p); err != nil {
+		t.Fatalf("Update failed: %v", err)
+	}
+
+	got, err := store.Get("upd-params")
+	if err != nil {
+		t.Fatalf("Get after Update failed: %v", err)
+	}
+	if len(got.Params) != 3 {
+		t.Errorf("Params: want 3 items, got %v", got.Params)
+	}
+	if got.Icon != "📝" {
+		t.Errorf("Icon: want %q, got %q", "📝", got.Icon)
 	}
 }
 
