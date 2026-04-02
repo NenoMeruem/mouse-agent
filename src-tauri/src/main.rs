@@ -48,10 +48,11 @@ async fn run_recipe(
 
     let (mut rx, mut child) = sidecar.spawn().map_err(|e| e.to_string())?;
 
-    // Write selection text to stdin, then close stdin
+    // Write selection text to stdin, then close stdin so Go's io.ReadAll unblocks
     if !selection.is_empty() {
         child.write(selection.as_bytes()).ok();
     }
+    drop(child); // closes stdin pipe → Go's io.ReadAll returns EOF
 
     let app_clone = app.clone();
     tauri::async_runtime::spawn(async move {
