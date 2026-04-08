@@ -20,3 +20,6 @@ vendor/
 
 # Git worktrees
 .worktrees/
+
+# Rust/Tauri build artifacts
+src-tauri/target/
