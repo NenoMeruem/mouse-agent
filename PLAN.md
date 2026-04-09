@@ -1,12 +1,12 @@
 # Prompt Agent — Development Plan
 
-> Tổng hợp từ session thiết kế: phân tích codebase, UI/UX Logi-style, Tauri integration, SQLite migration, distribution.
+> Tổng hợp từ session thiết kế: phân tích codebase, UI/UX, Tauri integration, SQLite migration, distribution.
 
 ---
 
 ## Tổng quan
 
-**Prompt Agent** là CLI tool + native overlay app cho phép người dùng định nghĩa "recipe" (prompt template) và chạy chúng với clipboard content, streaming kết quả realtime. Inspired bởi Logi AI Prompt Builder.
+**Prompt Agent** là CLI tool + native overlay app cho phép người dùng định nghĩa "recipe" (prompt template) và chạy chúng với clipboard content, streaming kết quả realtime.
 
 **Stack:**
 - Backend: Go (existing CLI) — storage SQLite, LLM streaming
@@ -560,7 +560,7 @@ brews:
       token: "{{ .Env.HOMEBREW_TAP_GITHUB_TOKEN }}"
     directory: Formula
     homepage: "https://github.com/{{ .Env.GITHUB_USERNAME }}/prompt-agent"
-    description: "AI prompt runner with recipe system — Logi-style overlay"
+    description: "AI prompt runner with recipe system — overlay"
     license: MIT
     test: |
       system "#{bin}/prompt-agent version"
