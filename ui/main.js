@@ -363,21 +363,6 @@ formSaveBtn.addEventListener('click', async () => {
   }
 });
 
-// ── Drag to move window ───────────────────────────────────────────────────────
-const dragTargets = [
-  document.getElementById('header'),
-  document.getElementById('sidebar'),
-];
-
-for (const el of dragTargets) {
-  el.addEventListener('mousedown', (e) => {
-    // Only left-click, and not on interactive elements
-    if (e.button !== 0) return;
-    if (e.target.closest('button, input, select, textarea, a')) return;
-    _tauri?.window?.getCurrentWindow()?.startDragging?.();
-  });
-}
-
 // ── Close / Keyboard ──────────────────────────────────────────────────────────
 closeBtn.addEventListener('click', () => {
   invoke('hide_window').catch(() => window.close());
@@ -587,13 +572,29 @@ historyBtn.addEventListener('click', async () => {
 
 historyCloseBtn.addEventListener('click', () => showView('input'));
 
+let clearConfirmPending = false;
+let clearConfirmTimer = null;
+
 historyClearBtn.addEventListener('click', async () => {
-  if (!confirm('Clear all history?')) return;
+  if (!clearConfirmPending) {
+    // First click: ask for confirmation inline
+    clearConfirmPending = true;
+    historyClearBtn.textContent = 'Sure?';
+    clearConfirmTimer = setTimeout(() => {
+      clearConfirmPending = false;
+      historyClearBtn.textContent = 'Clear All';
+    }, 3000);
+    return;
+  }
+  // Second click within 3s: execute
+  clearTimeout(clearConfirmTimer);
+  clearConfirmPending = false;
+  historyClearBtn.textContent = 'Clear All';
   try {
     await invoke('clear_history');
     await loadHistory();
   } catch (err) {
-    alert(String(err));
+    historyListEl.innerHTML = `<p class="history-empty">Error: ${err}</p>`;
   }
 });
 
