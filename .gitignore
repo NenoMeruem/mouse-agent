@@ -23,3 +23,8 @@ vendor/
 
 # Rust/Tauri build artifacts
 src-tauri/target/
+src-tauri/gen/
+src-tauri/binaries/
+
+# Claude Code local settings
+.claude/

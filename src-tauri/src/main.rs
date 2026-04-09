@@ -1,7 +1,7 @@
 // Prevents additional console window on Windows in release
 #![cfg_attr(not(debug_assertions), windows_subsystem = "windows")]
 
-use tauri::{AppHandle, Manager};
+use tauri::{AppHandle, Emitter, Manager};
 use tauri_plugin_shell::ShellExt;
 use tauri_plugin_shell::process::CommandEvent;
 
@@ -42,7 +42,7 @@ async fn run_recipe(
 
     let sidecar = app
         .shell()
-        .sidecar("prompt-agent")
+        .sidecar("prompt-agent-cli")
         .map_err(|e| e.to_string())?
         .args(&args);
 
@@ -83,7 +83,7 @@ async fn run_recipe(
 async fn list_recipes(app: AppHandle) -> Result<String, String> {
     let output = app
         .shell()
-        .sidecar("prompt-agent")
+        .sidecar("prompt-agent-cli")
         .map_err(|e| e.to_string())?
         .args(["prompt", "list", "--output", "json"])
         .output()
@@ -98,6 +98,112 @@ async fn list_recipes(app: AppHandle) -> Result<String, String> {
 fn hide_window(app: AppHandle) {
     if let Some(window) = app.get_webview_window("overlay") {
         window.hide().ok();
+    }
+}
+
+/// Save (create) a new recipe by calling the Go sidecar with flags
+#[tauri::command]
+async fn save_recipe(
+    app: AppHandle,
+    id: String,
+    name: String,
+    description: String,
+    template: String,
+    engine: String,
+    params: String,
+    icon: String,
+) -> Result<String, String> {
+    let mut args: Vec<String> = vec![
+        "prompt".into(), "add".into(),
+        "--id".into(), id,
+        "--name".into(), name,
+        "--template".into(), template,
+    ];
+    if !description.is_empty() {
+        args.push("--description".into());
+        args.push(description);
+    }
+    if !engine.is_empty() {
+        args.push("--engine".into());
+        args.push(engine);
+    }
+    if !params.is_empty() {
+        args.push("--params".into());
+        args.push(params);
+    }
+    if !icon.is_empty() {
+        args.push("--icon".into());
+        args.push(icon);
+    }
+
+    let output = app
+        .shell()
+        .sidecar("prompt-agent-cli")
+        .map_err(|e| e.to_string())?
+        .args(&args)
+        .output()
+        .await
+        .map_err(|e| e.to_string())?;
+
+    if output.status.success() {
+        Ok(String::from_utf8_lossy(&output.stdout).to_string())
+    } else {
+        Err(String::from_utf8_lossy(&output.stderr).to_string())
+    }
+}
+
+/// Delete a recipe by ID
+#[tauri::command]
+async fn delete_recipe(app: AppHandle, id: String) -> Result<String, String> {
+    let output = app
+        .shell()
+        .sidecar("prompt-agent-cli")
+        .map_err(|e| e.to_string())?
+        .args(["prompt", "delete", &id])
+        .output()
+        .await
+        .map_err(|e| e.to_string())?;
+
+    if output.status.success() {
+        Ok(String::from_utf8_lossy(&output.stdout).to_string())
+    } else {
+        Err(String::from_utf8_lossy(&output.stderr).to_string())
+    }
+}
+
+/// Update an existing recipe via flags
+#[tauri::command]
+async fn update_recipe(
+    app: AppHandle,
+    id: String,
+    name: String,
+    description: String,
+    template: String,
+    engine: String,
+    params: String,
+    icon: String,
+) -> Result<String, String> {
+    let mut args: Vec<String> = vec!["prompt".into(), "update".into(), id];
+    if !name.is_empty()        { args.extend(["--name".into(), name]); }
+    if !description.is_empty() { args.extend(["--description".into(), description]); }
+    if !template.is_empty()    { args.extend(["--template".into(), template]); }
+    if !engine.is_empty()      { args.extend(["--engine".into(), engine]); }
+    args.extend(["--params".into(), params]);
+    if !icon.is_empty()        { args.extend(["--icon".into(), icon]); }
+
+    let output = app
+        .shell()
+        .sidecar("prompt-agent-cli")
+        .map_err(|e| e.to_string())?
+        .args(&args)
+        .output()
+        .await
+        .map_err(|e| e.to_string())?;
+
+    if output.status.success() {
+        Ok(String::from_utf8_lossy(&output.stdout).to_string())
+    } else {
+        Err(String::from_utf8_lossy(&output.stderr).to_string())
     }
 }
 
@@ -165,7 +271,7 @@ fn main() {
                 }
             }
         })
-        .invoke_handler(tauri::generate_handler![run_recipe, list_recipes, hide_window])
+        .invoke_handler(tauri::generate_handler![run_recipe, list_recipes, hide_window, save_recipe, update_recipe, delete_recipe])
         .run(tauri::generate_context!())
         .expect("error while running tauri application");
 }

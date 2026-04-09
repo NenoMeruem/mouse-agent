@@ -8,7 +8,7 @@ build:
 build-sidecar: build
 	$(eval TARGET := $(shell rustc -vV | grep '^host:' | cut -d' ' -f2))
 	mkdir -p src-tauri/binaries
-	cp prompt-agent src-tauri/binaries/prompt-agent-$(TARGET)
+	cp prompt-agent src-tauri/binaries/prompt-agent-cli-$(TARGET)
 	@echo "Sidecar built for $(TARGET)"
 
 # Run Tauri in dev mode (builds sidecar first)

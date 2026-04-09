@@ -8,56 +8,147 @@
 </head>
 <body>
   <div id="app">
-    <!-- Left panel: recipe list -->
-    <div id="sidebar">
-      <div id="recipe-list">
-        <!-- Populated by JS -->
+
+    <!-- ── Header ── -->
+    <div id="header">
+      <div class="header-left">
+        <div class="logi-logo">logi</div>
+        <div class="header-divider"></div>
+        <span class="app-title">AI Prompt Builder</span>
+        <div class="ai-chip">
+          <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round">
+            <circle cx="12" cy="12" r="10"/><path d="M12 8v4l3 3"/>
+          </svg>
+        </div>
+      </div>
+      <div class="header-right">
+        <button class="hbtn" title="Settings">
+          <svg viewBox="0 0 24 24"><circle cx="12" cy="12" r="3"/><path d="M19.4 15a1.65 1.65 0 00.33 1.82l.06.06a2 2 0 010 2.83 2 2 0 01-2.83 0l-.06-.06a1.65 1.65 0 00-1.82-.33 1.65 1.65 0 00-1 1.51V21a2 2 0 01-2 2 2 2 0 01-2-2v-.09A1.65 1.65 0 009 19.4a1.65 1.65 0 00-1.82.33l-.06.06a2 2 0 01-2.83 0 2 2 0 010-2.83l.06-.06A1.65 1.65 0 004.68 15a1.65 1.65 0 00-1.51-1H3a2 2 0 01-2-2 2 2 0 012-2h.09A1.65 1.65 0 004.6 9a1.65 1.65 0 00-.33-1.82l-.06-.06a2 2 0 010-2.83 2 2 0 012.83 0l.06.06A1.65 1.65 0 009 4.68a1.65 1.65 0 001-1.51V3a2 2 0 012-2 2 2 0 012 2v.09a1.65 1.65 0 001 1.51 1.65 1.65 0 001.82-.33l.06-.06a2 2 0 012.83 0 2 2 0 010 2.83l-.06.06A1.65 1.65 0 0019.4 9a1.65 1.65 0 001.51 1H21a2 2 0 012 2 2 2 0 01-2 2h-.09a1.65 1.65 0 00-1.51 1z"/></svg>
+        </button>
+        <button class="hbtn" title="Feedback">
+          <svg viewBox="0 0 24 24"><path d="M21 15a2 2 0 01-2 2H7l-4 4V5a2 2 0 012-2h14a2 2 0 012 2z"/></svg>
+        </button>
+        <button class="hbtn close-hbtn" id="close-btn" title="Close">
+          <svg viewBox="0 0 24 24"><line x1="18" y1="6" x2="6" y2="18"/><line x1="6" y1="6" x2="18" y2="18"/></svg>
+        </button>
       </div>
     </div>
 
-    <!-- Right panel: params + output -->
-    <div id="main">
-      <!-- Param pills row -->
-      <div id="params-row">
-        <div class="param-group" id="param-tone" style="display:none">
-          <span class="param-label">Tone</span>
-          <div class="pills">
-            <button class="pill" data-param="tone" data-value="professional">Professional</button>
-            <button class="pill active" data-param="tone" data-value="casual">Casual</button>
-            <button class="pill" data-param="tone" data-value="concise">Concise</button>
+    <!-- ── Body ── -->
+    <div id="body">
+
+      <!-- Sidebar -->
+      <div id="sidebar">
+        <div class="sidebar-card">
+          <div class="sidebar-header">
+            <span class="sidebar-title">Recipes</span>
+            <button class="add-recipe-btn" id="add-recipe-btn" title="Add recipe">
+              <svg viewBox="0 0 24 24"><line x1="12" y1="5" x2="12" y2="19"/><line x1="5" y1="12" x2="19" y2="12"/></svg>
+            </button>
           </div>
-        </div>
-        <div class="param-group" id="param-length" style="display:none">
-          <span class="param-label">Length</span>
-          <div class="pills">
-            <button class="pill active" data-param="length" data-value="short">Short</button>
-            <button class="pill" data-param="length" data-value="medium">Medium</button>
-            <button class="pill" data-param="length" data-value="long">Long</button>
-          </div>
-        </div>
-        <div class="param-group" id="param-complexity" style="display:none">
-          <span class="param-label">Complexity</span>
-          <div class="pills">
-            <button class="pill" data-param="complexity" data-value="simple">Simple</button>
-            <button class="pill active" data-param="complexity" data-value="normal">Normal</button>
-            <button class="pill" data-param="complexity" data-value="technical">Technical</button>
-          </div>
+          <div id="recipe-list"></div>
         </div>
       </div>
 
-      <!-- Output area -->
-      <div id="output-wrapper">
-        <div id="output" class="placeholder">Select a recipe and press Run&hellip;</div>
-      </div>
+      <!-- Main -->
+      <div id="main">
 
-      <!-- Action bar -->
-      <div id="action-bar">
-        <button id="run-btn" disabled>&#9654; Run</button>
-        <button id="copy-btn" style="display:none">&#8998; Copy</button>
-        <button id="close-btn">&#10005;</button>
-      </div>
-    </div>
-  </div>
+        <!-- Input view -->
+        <div id="view-input">
+          <div class="section-block">
+            <div class="section-header">
+              <span class="section-label">Instructions</span>
+              <button class="icon-btn" title="Edit">
+                <svg viewBox="0 0 24 24"><path d="M11 4H4a2 2 0 00-2 2v14a2 2 0 002 2h14a2 2 0 002-2v-7"/><path d="M18.5 2.5a2.121 2.121 0 013 3L12 15l-4 1 1-4 9.5-9.5z"/></svg>
+              </button>
+            </div>
+            <div id="instruction-card">
+              <span id="instruction-text" class="ph">Select a recipe to see instructions…</span>
+            </div>
+          </div>
+
+          <div class="section-block grow">
+            <textarea id="input-area" placeholder="Add text or keywords here…"></textarea>
+          </div>
+
+          <div id="params-section"></div>
+
+          <div id="run-wrap">
+            <button id="run-btn" disabled>
+              <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round">
+                <line x1="5" y1="12" x2="19" y2="12"/><polyline points="12 5 19 12 12 19"/>
+              </svg>
+            </button>
+          </div>
+        </div>
+
+        <!-- Output view -->
+        <div id="view-output">
+          <div class="section-header">
+            <span class="section-label">Response</span>
+            <button class="back-btn" id="back-btn">← Back</button>
+          </div>
+          <div id="output-wrapper">
+            <div id="output"></div>
+          </div>
+          <div id="output-actions">
+            <button id="copy-btn" style="display:none">Copy</button>
+          </div>
+        </div>
+
+        <!-- Form view: Create recipe -->
+        <div id="view-form">
+          <div class="section-header">
+            <span class="section-label" id="form-title">New Recipe</span>
+            <button class="back-btn" id="form-cancel-btn">✕ Cancel</button>
+          </div>
+
+          <div id="form-scroll">
+            <div class="form-row">
+              <label class="form-label">Name <span class="required">*</span></label>
+              <input class="form-input" id="f-name" type="text" placeholder="e.g. Summarize" />
+            </div>
+            <div class="form-row">
+              <label class="form-label">Description</label>
+              <input class="form-input" id="f-desc" type="text" placeholder="Short description shown in instructions" />
+            </div>
+            <div class="form-row grow">
+              <label class="form-label">Template <span class="required">*</span>  <span class="form-hint">— use {{selection}} for clipboard text</span></label>
+              <textarea class="form-input form-textarea" id="f-template" placeholder="Summarize the following text concisely:&#10;&#10;{{selection}}"></textarea>
+            </div>
+            <div class="form-row-inline">
+              <div class="form-col">
+                <label class="form-label">Engine</label>
+                <select class="form-input form-select" id="f-engine">
+                  <option value="gemini">Gemini</option>
+                  <option value="openai">OpenAI</option>
+                </select>
+              </div>
+              <div class="form-col">
+                <label class="form-label">Icon <span class="form-hint">(emoji)</span></label>
+                <input class="form-input" id="f-icon" type="text" placeholder="📝" maxlength="4" />
+              </div>
+            </div>
+            <div class="form-row">
+              <label class="form-label">Parameters</label>
+              <div class="form-checks">
+                <label class="form-check"><input type="checkbox" value="tone" id="fc-tone" /> Style / Tone</label>
+                <label class="form-check"><input type="checkbox" value="length" id="fc-length" /> Length</label>
+                <label class="form-check"><input type="checkbox" value="complexity" id="fc-complexity" /> Complexity</label>
+              </div>
+            </div>
+          </div>
+
+          <div class="form-actions">
+            <div id="form-error" class="form-error"></div>
+            <button class="form-save-btn" id="form-save-btn">Save Recipe</button>
+          </div>
+        </div>
+
+      </div><!-- /main -->
+    </div><!-- /body -->
+  </div><!-- /app -->
+
   <script type="module" src="main.js"></script>
 </body>
 </html>
