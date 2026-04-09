@@ -1,222 +1,192 @@
 # Prompt Agent
 
-A CLI tool to build and run AI prompts fast.
+A CLI tool + Tauri overlay app for running AI prompt recipes against clipboard content.
 
 ## Installation
 
 ### Build from source
 
+Requires Go 1.24+.
+
 ```bash
+git clone <repo>
+cd prompt-builder-agent
 go build -o prompt-agent ./cmd/prompt-agent
 ```
 
-## Usage
+### Tauri app (optional)
 
-### Initialize configuration
+Requires Rust + `cargo-tauri`.
+
+```bash
+make build-sidecar   # builds Go binary and copies it to src-tauri/binaries/
+make dev-tauri       # launch Tauri in dev mode
+```
+
+## Quick start
+
+```bash
+# 1. Create config and seed default recipes
+./prompt-agent init
+
+# 2. Set your API key
+export GEMINI_API_KEY="your-key-here"
+
+# 3. Copy some text to clipboard, then run a recipe
+./prompt-agent run explain
+```
+
+## Commands
+
+### `init`
+
+Creates `~/.prompt-agent/config.yaml` and seeds 6 default recipes into the SQLite store.
 
 ```bash
 ./prompt-agent init
 ```
 
-This creates `~/.prompt-agent/config.yaml` with default settings.
+### `run <recipe-id>`
 
-### Check version
+Runs a recipe. By default reads selection from clipboard.
+
+```bash
+./prompt-agent run explain
+./prompt-agent run summarize --length short
+./prompt-agent run rephrase --tone casual --complexity simple
+./prompt-agent run fix-code --engine openai
+./prompt-agent run explain --dry-run        # preview prompt, no API call
+./prompt-agent run explain --edit           # open editor before sending
+./prompt-agent run explain --raw            # plain output (used by Tauri)
+echo "some text" | ./prompt-agent run explain --no-select  # read from stdin
+```
+
+**Flags:**
+
+| Flag | Description |
+|---|---|
+| `--engine` | Override recipe's engine (`gemini`, `openai`, `claude`) |
+| `--tone` | `professional`, `casual`, `concise` |
+| `--length` | `short`, `medium`, `long` |
+| `--complexity` | `simple`, `normal`, `technical` |
+| `--no-select` | Skip clipboard; read from stdin instead |
+| `--raw` | Plain stdout, no formatting decorators |
+| `--dry-run` | Preview final prompt without calling the API |
+| `--edit` | Open prompt in TUI editor before sending |
+
+### `prompt` — manage recipes
+
+```bash
+./prompt-agent prompt list                  # table view
+./prompt-agent prompt list --output json    # JSON (used by Tauri)
+./prompt-agent prompt show <id>
+./prompt-agent prompt add                   # interactive mode
+./prompt-agent prompt add --id my-recipe --template "Summarize: {{selection}}" --engine gemini
+./prompt-agent prompt edit <id>             # opens $EDITOR
+./prompt-agent prompt update <id> --name "New Name"
+./prompt-agent prompt search <query>
+./prompt-agent prompt delete <id>
+```
+
+### `history` — run history
+
+```bash
+./prompt-agent history                      # last 50 runs
+./prompt-agent history --limit 20 --prompt explain
+./prompt-agent history show <id-prefix>     # full input + prompt + response
+./prompt-agent history search <query>
+./prompt-agent history clear --before 30d
+./prompt-agent history clear --all
+```
+
+### `daemon` — hotkey trigger
+
+```bash
+./prompt-agent daemon          # start hotkey listener (reads config)
+./prompt-agent daemon setup    # generate skhd / xbindkeys config file
+```
+
+### Other
 
 ```bash
 ./prompt-agent version
-```
-
-### Verify configuration
-
-```bash
-./prompt-agent config verify
-```
-
-This command checks your configuration and shows which LLM engines are available:
-- Shows config file location
-- Lists configured engines from `config.yaml`
-- Checks environment variables for API keys
-- Displays available engines and helpful setup tips
-
-### View available commands
-
-```bash
-./prompt-agent --help
+./prompt-agent config verify   # check which engines are configured
+./prompt-agent config engines  # list available engines
 ```
 
 ## Configuration
 
-Config file location: `~/.prompt-agent/config.yaml`
-
-Environment prefix: `PROMPT_AGENT_`
-
-### Setting API Keys
-
-API keys can be configured in two ways (environment variables take priority):
-
-**Option 1: Config File** (`~/.prompt-agent/config.yaml`)
-```yaml
-engines:
-  openai:
-    api_key: "sk-your-key-here"
-    model: "gpt-4-mini"
-  gemini:
-    api_key: "your-gemini-key-here"
-    model: "gemini-2.5-flash-lite"
-ui:
-  output: "stdout"
-```
-
-**Option 2: Environment Variables**
-```bash
-export OPENAI_API_KEY="sk-your-key-here"
-export GEMINI_API_KEY="your-gemini-key-here"
-```
-
-Use `./prompt-agent config verify` to verify your setup and see which engines are available.
-
-### Full Configuration Example
+File: `~/.prompt-agent/config.yaml`
 
 ```yaml
 engines:
   openai:
-    api_key: "sk-your-key-here"
+    api_key: "sk-your-key-here"      # or use env: prefix (see below)
     model: "gpt-4-mini"
   gemini:
-    api_key: "your-gemini-key-here"
+    api_key: env:GEMINI_API_KEY      # resolved from $GEMINI_API_KEY at runtime
     model: "gemini-2.5-flash-lite"
+  claude:
+    api_key: env:ANTHROPIC_API_KEY
+    model: "claude-sonnet-4-6"
 ui:
-  output: "stdout"
+  output: "stdout"                   # or "tui" for Bubble Tea renderer
 triggers:
   enabled: true
-  default_prompt: explain_code
   hotkeys:
-    alt+space: explain_code
-    alt+shift+space: code_review
+    alt+space: explain
+    alt+shift+r: review-pr
 selection:
-  provider: "auto"
+  provider: "auto"                   # auto, macos, linux, windows
   fail_on_empty_selection: false
   trim_whitespace: true
 ```
 
-## Prompt storage
+**API key resolution order** (highest priority first):
+1. Environment variable (`OPENAI_API_KEY`, `GEMINI_API_KEY`, `ANTHROPIC_API_KEY`)
+2. Config file value
+3. Config file with `env:VARNAME` indirection
 
-Prompts are persisted in a JSON file under your home directory (the path is
-`~/.prompt-agent/prompts.json` by default).  The `init` command will create this
-file with a sample entry so you can see the expected structure.
+## Default recipes
 
-An example prompt record looks like:
+Seeded on `init`:
 
-```json
-{
-  "id": "example",
-  "name": "Example Prompt",
-  "description": "This is a sample prompt. Edit or delete it.",
-  "engine": "openai",
-  "template": "Write a short description of {{.topic}}.",
-  "variables": ["topic"],
-  "created_at": "2026-01-01T00:00:00Z",
-  "updated_at": "2026-01-01T00:00:00Z"
-}
-```
+| ID | Name | Supported params |
+|---|---|---|
+| `explain` | Explain | `tone`, `length` |
+| `summarize` | Summarize | `length` |
+| `rephrase` | Rephrase | `tone`, `complexity` |
+| `fix-code` | Fix Code | — |
+| `translate-vi` | Translate → VI | — |
+| `review-pr` | Review PR | `complexity` |
 
-(Internally the SDK loads an array of these objects and manages them via the
-`storage.JSONStore` implementation.)
+## Template syntax
 
-## Project Structure
+Templates use `{{variable}}` placeholders. `selection` is the reserved variable populated from clipboard or stdin.
 
 ```
-prompt-agent/
-├─ cmd/
-│  └─ prompt-agent/
-│     └─ main.go              # Entry point
-├─ internal/
-│  ├─ app/
-│  │  └─ context.go           # App context initialization
-│  ├─ cli/
-│  │  ├─ root.go              # Root command
-│  │  ├─ version.go           # Version command
-│  │  ├─ init.go              # Init command
-│  │  ├─ prompt.go            # Prompt command
-│  │  ├─ prompt_add.go        # Add prompt command
-│  │  ├─ prompt_list.go       # List prompts command
-│  │  ├─ prompt_show.go       # Show prompt details command
-│  │  ├─ prompt_delete.go     # Delete prompt command
-│  │  ├─ run.go               # Run prompt command
-│  │  ├─ run_handler.go       # Run command logic
-│  │  └─ daemon.go            # Trigger daemon command
-│  ├─ config/
-│  │  └─ config.go            # Config loading with Viper
-│  ├─ storage/
-│  │  ├─ storage.go           # Storage interface
-│  │  └─ sqlite.go            # SQLite implementation
-│  ├─ prompt/
-│  │  ├─ builder.go           # Prompt template builder
-│  │  ├─ variables.go         # Variable extraction
-│  │  └─ prompt_test.go       # Unit tests
-│  ├─ selection/
-│  │  ├─ provider.go          # Selection interface
-│  │  ├─ macos.go             # macOS pbpaste implementation
-│  │  ├─ linux.go             # Linux xclip implementation
-│  │  ├─ windows.go           # Windows Get-Clipboard implementation
-│  │  └─ factory.go           # OS-specific provider factory
-│  ├─ app/
-│  │  └─ context.go           # App context management
-│  └─ trigger/
-│     ├─ trigger.go           # Trigger interface
-│     ├─ manager.go           # Trigger manager
-│     ├─ hotkey.go            # Hotkey trigger implementation
-│     └─ mouse.go             # Mouse trigger design (Phase 5+)
-├─ pkg/
-│  └─ models/
-│     └─ prompt.go            # Prompt model
-├─ go.mod
-├─ go.sum
-├─ prompt-agent               # Compiled binary
-├─ README.md
-├─ PHASE4_TRIGGER_SETUP.md    # Trigger setup guide
-└─ PHASE2_SUMMARY.md          # Phase 2 summary
+Fix any bugs in the following code:\n\n{{selection}}
 ```
 
-## Architecture
+Variables not provided by clipboard are prompted interactively, or can be set via `PROMPT_<VARNAME>` environment variables.
 
-### Storage Layer
-- **Interface**: `PromptStore` interface for abstraction
-- **Implementation**: SQLite with JSON serialization for variables
-- **Path**: `~/.prompt-agent/prompts.db`
+## Hotkey daemon
 
-### Builder
-- **SimpleBuilder**: Template variable substitution using `{{variable}}` syntax
-- **Variable Extraction**: Regex-based detection of all variables in templates
+Registers system-wide hotkeys that run a recipe against whatever text is currently in the clipboard — no terminal needed.
 
-### Selection Provider
-- **Interface**: `Provider` interface for clipboard access
-- **macOS**: Uses `pbpaste` command
-- **Linux**: Uses `xclip`, `xsel`, or `wl-paste` (with fallback chain)
-- **Windows**: Uses `Get-Clipboard` PowerShell
-- **Factory**: OS-specific build tags for automatic provider selection
+**macOS:** requires Accessibility permission (`System Preferences → Privacy & Security → Accessibility`).
 
-#### Linux Clipboard Setup
+**Linux (X11):** uses `golang.design/x/hotkey`. Alternatively, generate an `xbindkeys` config with `daemon setup`.
 
-On Linux, the app automatically tries multiple clipboard tools in this order:
-1. **xclip** (X11) - Most common
-2. **xsel** (X11) - Alternative
-3. **wl-paste** (Wayland) - For Wayland desktop environments
+**macOS alternative:** generate an `skhd` config with `daemon setup` (requires `brew install skhd`).
 
-**Installation:**
-```bash
-# For X11 systems (Ubuntu/Debian)
-sudo apt-get install xclip
-# or
-sudo apt-get install xsel
+## Clipboard requirements
 
-# For Wayland systems
-sudo apt-get install wl-clipboard
-```
+- **macOS:** built-in `pbpaste`
+- **Linux X11:** `xclip` or `xsel` (`sudo apt install xclip`)
+- **Linux Wayland:** `wl-paste` (`sudo apt install wl-clipboard`)
+- **Windows:** PowerShell `Get-Clipboard` (built-in)
 
-If none of these tools are installed, the app will show a helpful error message asking you to install one of them.
+## Storage
 
-### CLI
-- **Cobra**: Command framework with subcommands
-- **Viper**: Configuration management
-- **Interactive Input**: bufio for multi-line prompts
+All data is stored in `~/.prompt-agent/prompts.db` (SQLite, pure Go — no CGO required). If a legacy `prompts.json` exists from an older version, it is auto-migrated on first run and renamed to `prompts.json.bak`.

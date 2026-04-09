@@ -13,7 +13,7 @@ build-sidecar: build
 
 # Run Tauri in dev mode (builds sidecar first)
 dev-tauri: build-sidecar
-	cargo tauri dev --manifest-path src-tauri/Cargo.toml
+	cd src-tauri && cargo tauri dev
 
 # Run Go tests
 test:

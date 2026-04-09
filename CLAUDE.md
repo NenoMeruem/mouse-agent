@@ -1,72 +1,66 @@
-# Prompt Agent
+# CLAUDE.md
 
-CLI tool + Tauri overlay app để chạy AI prompt recipes với clipboard content.
-Inspired by Logi AI Prompt Builder.
+This file provides guidance to Claude Code (claude.ai/code) when working with code in this repository.
+
+## What this project is
+
+CLI tool + Tauri overlay app for running AI prompt recipes against clipboard/stdin content.
 
 ## Commands
 
 ```bash
-go build -o prompt-agent ./cmd/prompt-agent
-go test ./...
+# Go CLI
+make build                          # build ./prompt-agent binary
+make test                           # go test ./...
+go test ./internal/storage/...      # run a single package's tests
 go vet ./...
+
+# Tauri (requires Rust + cargo-tauri)
+make build-sidecar                  # build Go binary + copy to src-tauri/binaries/ with target triple suffix
+make dev-tauri                      # build sidecar then launch Tauri dev mode
 ```
 
 ## Architecture
 
 ```
-CLI (Cobra) → AppContext → PromptStore (SQLite) + HistoryStore (SQLite)
-                        → LLM Manager → OpenAI / Gemini / Claude (streaming)
-                        → Output: StdoutRenderer | TUIRenderer (Bubble Tea)
+cmd/prompt-agent/main.go
+  └─ internal/cli/           ← Cobra commands (root, run, prompt, history, init, daemon, config)
+       └─ run_handler.go     ← Core run flow: load prompt → get selection → build template → LLM → history
+  └─ internal/app/context.go ← AppContext (singleton): wires PromptStore, HistoryStore, Builder, SelectionManager, Config
+  └─ internal/config/        ← Viper config from ~/.prompt-agent/config.yaml
+  └─ internal/storage/       ← SQLite backend (modernc.org/sqlite, pure Go, no CGO)
+  └─ internal/llm/           ← LLM manager + per-provider streaming clients
+  └─ internal/prompt/        ← Template builder + param injector
+  └─ internal/selection/     ← Clipboard/selection provider (platform-specific)
+  └─ internal/output/        ← StdoutRenderer, TUIRenderer (Bubble Tea), RawRenderer
+  └─ internal/trigger/       ← Hotkey daemon + mouse trigger (platform-specific build tags)
+  └─ pkg/models/             ← Prompt + RunRecord data models
+
+src-tauri/                   ← Rust/Tauri shell (tray, global hotkey, WebView)
+ui/                          ← WebView HTML/CSS/JS (horizontal layout: recipe list | params + output)
 ```
 
-**Key files:**
-- `internal/cli/run_handler.go` — core run flow, LLM dispatch
-- `internal/storage/sqlite.go` — SQLite backend (thay thế json.go)
-- `internal/llm/*/client.go` — LLM providers, tất cả implement `llm.Client`
-- `internal/config/config.go` — Viper config, constants, helper getters
-- `pkg/models/prompt.go` — Prompt + RunRecord data models
+## Run flow (`run_handler.go`)
+
+1. Load `Prompt` from SQLite via `PromptStore.Get(id)`
+2. `GetSelection()` — clipboard OR stdin when `--no-select` (detects pipe via `os.Stdin.Stat()`)
+3. `collectMissingVariables()` — tries `PROMPT_<VARNAME>` env var first, then interactive prompt
+4. `Builder.Build()` — replaces `{{variable}}` placeholders in template
+5. `InjectParams()` — appends tone/length/complexity suffix if flags set
+6. `PromptEditor` TUI — only when `--edit` flag
+7. `runWithLLM()` — tees stdout stream into `responseBuilder` + renderer, saves to `HistoryStore`
 
 ## Storage
 
 **SQLite only** — `modernc.org/sqlite` (pure Go, no CGO).
-DB path: `~/.prompt-agent/prompts.db`
-
-Hai bảng chính:
-- `prompts` — recipe definitions (id, name, engine, template, variables, params, icon)
-- `run_history` — mỗi lần run (prompt_id, input_text, response, duration_ms)
-
-> KHÔNG dùng json.go nữa. Nếu thấy code dùng JSONStore → đó là legacy, cần migrate.
-
-## Data model
-
-```go
-type Prompt struct {
-    ID, Name, Description, Engine, Template string
-    Variables []string   // extracted từ {{variable}} placeholders
-    Params    []string   // ["tone","length","complexity"] — UI pills
-    Icon      string
-    CreatedAt, UpdatedAt time.Time
-}
-
-type RunRecord struct {
-    ID, PromptID, Engine   string
-    InputText, FinalPrompt string
-    Response               string
-    DurationMs             int64
-    Error                  string
-    CreatedAt              time.Time
-}
-```
+- DB: `~/.prompt-agent/prompts.db`
+- Tables: `prompts` and `run_history`
+- `storage/migrate.go` auto-migrates from legacy `prompts.json` on first startup (rename to `.bak`)
+- `json.go` still exists as legacy — do not use it for new code; `PromptStore`/`HistoryStore` interfaces in `storage/storage.go` are the canonical API
 
 ## Template syntax
 
-Dùng `{{variable}}` (KHÔNG phải `{{.variable}}`).
-
-```
-"Explain this code:\n{{selection}}"
-```
-
-`selection` là reserved variable — lấy từ clipboard hoặc stdin.
+`{{variable}}` — **not** `{{.variable}}`. Reserved variable: `selection` (from clipboard or stdin).
 
 ## Config
 
@@ -75,18 +69,17 @@ File: `~/.prompt-agent/config.yaml`
 ```yaml
 engines:
   gemini:
-    api_key: env:GEMINI_API_KEY   # prefix "env:" được resolve thành os.Getenv()
+    api_key: env:GEMINI_API_KEY   # "env:" prefix resolved via resolveAPIKey() in config.go
     model: gemini-2.5-flash-lite
 ui:
-  output: stdout  # hoặc "tui"
+  output: stdout   # or "tui"
 ```
 
-**QUAN TRỌNG:** `api_key: env:SOMETHING` phải được resolve bằng `resolveAPIKey()` trong config.go.
-Không được load thẳng string `"env:SOMETHING"` vào client.
+API keys: env vars (`OPENAI_API_KEY`, `GEMINI_API_KEY`, `ANTHROPIC_API_KEY`) take priority over config file. Config file supports `env:VARNAME` indirection — always resolved by `config.GetEngineAPIKey()`.
 
 ## LLM providers
 
-Tất cả implement interface `llm.Client`:
+All implement `llm.Client` in `internal/llm/types.go`:
 ```go
 type Client interface {
     Name() string
@@ -94,66 +87,27 @@ type Client interface {
 }
 ```
 
-Gemini phải dùng `GenerateContentStream()` — KHÔNG dùng `GenerateContent()` rồi fake chunk.
+Engines registered in `registerAvailableEngines()` in `run_handler.go` — only engines with a resolvable API key are registered. Gemini uses `GenerateContentStream()` (real streaming, not faked).
 
-## Run flow
+## Tauri integration
 
-```
-run_handler.go:
-1. Load prompt từ SQLite
-2. GetSelection() — clipboard HOẶC stdin (khi --no-select)
-3. collectMissingVariables() — env vars → interactive input
-4. InjectParams() — append tone/length suffix vào cuối prompt
-5. [--edit flag only] PromptEditor TUI
-6. runWithLLM() → spawn LLM → tee stdout → HistoryStore.Append()
-```
+Go binary runs as a **sidecar** — Tauri spawns it, pipes stdin, reads stdout line-by-line.
 
-**--no-select + stdin:** khi Tauri pipe text vào:
-```go
-stat, _ := os.Stdin.Stat()
-if (stat.Mode() & os.ModeCharDevice) == 0 {
-    bytes, _ := io.ReadAll(os.Stdin)
-    data["selection"] = strings.TrimSpace(string(bytes))
-}
-```
-
-## Tauri integration (Phase 3)
-
-Go binary chạy như **sidecar** — Tauri spawn process, pipe stdin, đọc stdout line-by-line.
-
-```rust
-// Rust gọi Go:
-app.shell().sidecar("prompt-agent")
-   .args(["run", recipe_id, "--no-select", "--raw"])
-   .spawn() // pipe selection qua stdin, emit stdout về WebView
-```
-
-```javascript
-// WebView nhận:
-await listen('chunk', ({ payload }) => output.textContent += payload);
-await listen('done', () => { runBtn.disabled = false; });
-```
-
-Tauri cần flag `--output json` cho list commands:
 ```bash
-./prompt-agent prompt list --output json   # Tauri dùng để load recipe list
+./prompt-agent run <id> --no-select --raw   # Tauri pipes selection via stdin
+./prompt-agent prompt list --output json    # Tauri uses this to load recipe list
 ```
 
-## Known bugs (cần fix)
-
-- [ ] `init.go` tạo template `{{.topic}}` → phải là `{{topic}}`
-- [ ] `config.go` không resolve `env:` prefix
-- [ ] `gemini/client.go` fake streaming, cần dùng `GenerateContentStream()`
-- [ ] `run_handler.go` mở PromptEditor bắt buộc → chỉ khi `--edit` flag
+The sidecar binary must be placed at `src-tauri/binaries/prompt-agent-cli-<target-triple>`. `make build-sidecar` handles this automatically.
 
 ## Conventions
 
-- Tất cả storage operations phải thread-safe (SQLite handles this)
-- Error messages bắt đầu bằng `❌` khi hiển thị ra CLI
-- Không hardcode API keys, model names — dùng `config.GetEngineModel(engine)`
-- Test files: `*_test.go` cạnh file source
-- Atomic file writes nếu còn dùng file (temp file + os.Rename)
+- Error messages displayed to CLI users start with `❌`
+- `config.GetEngineModel(engine)` for model names — never hardcode
+- Platform-specific code uses build tags (see `internal/trigger/`, `internal/output/clipboard_*.go`)
+- `--raw` flag suppresses all decorators — required for Tauri/piped use
+- `--output json` flag on list commands for Tauri consumption
 
-## Import plan chi tiết
+## Detailed implementation plan
 
 @./PLAN.md
