@@ -9,15 +9,15 @@
     "active": true,
     "targets": "all",
     "icon": [],
-    "externalBin": ["binaries/prompt-agent"]
+    "externalBin": ["binaries/prompt-agent-cli"]
   },
   "app": {
     "windows": [
       {
         "label": "overlay",
         "title": "Prompt Agent",
-        "width": 720,
-        "height": 280,
+        "width": 760,
+        "height": 600,
         "resizable": false,
         "decorations": false,
         "alwaysOnTop": true,
@@ -28,20 +28,13 @@
     ],
     "security": {
       "csp": null
-    }
+    },
+    "withGlobalTauri": true,
+    "macOSPrivateApi": true
   },
   "plugins": {
     "shell": {
-      "open": false,
-      "scope": [
-        {
-          "name": "binaries/prompt-agent",
-          "sidecar": true,
-          "args": true
-        }
-      ]
-    },
-    "global-shortcut": {},
-    "clipboard-manager": {}
+      "open": false
+    }
   }
 }
