@@ -11,9 +11,11 @@ var historyCmd = &cobra.Command{
 // flags for the default list action
 var historyLimit int
 var historyPromptFilter string
+var historyOutputJSON bool
 
 func init() {
 	rootCmd.AddCommand(historyCmd)
-	historyCmd.Flags().IntVar(&historyLimit, "limit", 20, "Number of records to show")
+	historyCmd.Flags().IntVar(&historyLimit, "limit", 50, "Number of records to show")
 	historyCmd.Flags().StringVar(&historyPromptFilter, "prompt", "", "Filter by prompt ID")
+	historyCmd.Flags().BoolVar(&historyOutputJSON, "output-json", false, "Output as JSON (for Tauri)")
 }

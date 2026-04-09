@@ -1,6 +1,7 @@
 package cli
 
 import (
+	"encoding/json"
 	"fmt"
 	"io"
 	"text/tabwriter"
@@ -14,6 +15,12 @@ func historyListCommand(cmd *cobra.Command, args []string) error {
 	records, err := app.GlobalContext.HistoryStore.List(historyLimit, historyPromptFilter)
 	if err != nil {
 		return fmt.Errorf("cannot list history: %w", err)
+	}
+
+	if historyOutputJSON {
+		b, _ := json.Marshal(records)
+		fmt.Println(string(b))
+		return nil
 	}
 
 	return renderHistoryTable(cmd.OutOrStdout(), records)

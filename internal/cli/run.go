@@ -12,6 +12,7 @@ var (
 	runTone       string
 	runLength     string
 	runComplexity string
+	runEngine     string
 )
 
 func init() {
@@ -23,6 +24,7 @@ func init() {
 	runCmd.Flags().StringVar(&runTone, "tone", "", "Tone: professional, casual, concise")
 	runCmd.Flags().StringVar(&runLength, "length", "", "Length: short, medium, long")
 	runCmd.Flags().StringVar(&runComplexity, "complexity", "", "Complexity: simple, normal, technical")
+	runCmd.Flags().StringVar(&runEngine, "engine", "", "Override engine (gemini, openai, claude, ...)")
 }
 
 var runCmd = &cobra.Command{

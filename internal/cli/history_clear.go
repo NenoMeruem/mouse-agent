@@ -10,6 +10,7 @@ import (
 	"github.com/spf13/cobra"
 )
 
+
 var historyClearCmd = &cobra.Command{
 	Use:   "clear",
 	Short: "Clear run history",
@@ -17,24 +18,31 @@ var historyClearCmd = &cobra.Command{
 }
 
 var clearBefore string // e.g. "30d", "7d", "1h"
+var clearAll bool
 
 func init() {
 	historyCmd.AddCommand(historyClearCmd)
 	historyClearCmd.Flags().StringVar(&clearBefore, "before", "30d", "Clear records older than this duration (e.g. 30d, 7d, 1h)")
+	historyClearCmd.Flags().BoolVar(&clearAll, "all", false, "Clear all history records")
 }
 
 func historyClearCommand(cmd *cobra.Command, args []string) error {
+	if clearAll {
+		if err := app.GlobalContext.HistoryStore.ClearAll(); err != nil {
+			return fmt.Errorf("cannot clear history: %w", err)
+		}
+		fmt.Fprintf(cmd.OutOrStdout(), "History cleared.\n")
+		return nil
+	}
+
 	d, err := parseDuration(clearBefore)
 	if err != nil {
 		return fmt.Errorf("invalid --before value: %w", err)
 	}
-
 	cutoff := time.Now().Add(-d)
-
 	if err := app.GlobalContext.HistoryStore.Clear(cutoff); err != nil {
 		return fmt.Errorf("cannot clear history: %w", err)
 	}
-
 	fmt.Fprintf(cmd.OutOrStdout(), "History cleared (records before %s).\n", cutoff.Format("2006-01-02"))
 	return nil
 }
