@@ -43,4 +43,7 @@ type HistoryStore interface {
 
 	// Clear deletes records created before the given time.
 	Clear(before time.Time) error
+
+	// ClearAll deletes every run record unconditionally.
+	ClearAll() error
 }

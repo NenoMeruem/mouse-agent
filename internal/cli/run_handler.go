@@ -112,9 +112,15 @@ func runPromptCommand(cmd *cobra.Command, args []string) error {
 		finalPrompt = editedPrompt
 	}
 
+	// Resolve engine: --engine flag overrides recipe's engine
+	engine := promptDef.Engine
+	if runEngine != "" {
+		engine = runEngine
+	}
+
 	// Send to LLM if engine is specified
-	if promptDef.Engine != "" && promptDef.Engine != "none" {
-		response, durationMs, err := runWithLLM(finalPrompt, promptDef.Engine)
+	if engine != "" && engine != "none" {
+		response, durationMs, err := runWithLLM(finalPrompt, engine)
 		if err != nil {
 			return err
 		}
@@ -124,7 +130,7 @@ func runPromptCommand(cmd *cobra.Command, args []string) error {
 			record := &models.RunRecord{
 				ID:          uuid.New().String(),
 				PromptID:    promptDef.ID,
-				Engine:      promptDef.Engine,
+				Engine:      engine,
 				InputText:   data["selection"],
 				FinalPrompt: finalPrompt,
 				Response:    response,
@@ -206,8 +212,10 @@ func runWithLLM(prompt, engine string) (string, int64, error) {
 		Model:  config.GetEngineModel(engine),
 	}
 
-	// Start streaming from LLM
-	fmt.Printf("🚀 Streaming from %s...\n", engine)
+	// Start streaming from LLM (suppress status line in raw/Tauri mode)
+	if !rawOutput {
+		fmt.Printf("🚀 Streaming from %s...\n", engine)
+	}
 	ch, err := client.Stream(ctx, req)
 	if err != nil {
 		return "", 0, fmt.Errorf("❌ failed to start streaming: %w", err)
@@ -232,8 +240,13 @@ func runWithLLM(prompt, engine string) (string, int64, error) {
 		}
 	}()
 
-	// Render the output stream
-	renderer := output.NewFactory(config.GetUIOutput(), engine).CreateRenderer()
+	// Render the output stream — raw mode: no decorators (for Tauri/piped use)
+	var renderer output.StreamRenderer
+	if rawOutput {
+		renderer = output.NewRawStdoutStreamRenderer()
+	} else {
+		renderer = output.NewFactory(config.GetUIOutput(), engine).CreateRenderer()
+	}
 	if err := renderer.RenderStream(teeCh); err != nil {
 		return "", 0, fmt.Errorf("❌ render error: %w", err)
 	}

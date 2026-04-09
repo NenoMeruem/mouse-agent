@@ -171,6 +171,105 @@ async fn delete_recipe(app: AppHandle, id: String) -> Result<String, String> {
     }
 }
 
+/// Get engine configs as JSON
+#[tauri::command]
+async fn get_engine_configs(app: AppHandle) -> Result<String, String> {
+    let output = app
+        .shell()
+        .sidecar("prompt-agent-cli")
+        .map_err(|e| e.to_string())?
+        .args(["config", "get-engines"])
+        .output()
+        .await
+        .map_err(|e| e.to_string())?;
+    Ok(String::from_utf8_lossy(&output.stdout).trim().to_string())
+}
+
+/// Save a single engine config (api_key + model)
+#[tauri::command]
+async fn save_engine_config(
+    app: AppHandle,
+    engine: String,
+    api_key: String,
+    model: String,
+) -> Result<String, String> {
+    let mut args = vec!["config".to_string(), "set-engine".to_string(), engine];
+    args.extend(["--api-key".to_string(), api_key]);
+    args.extend(["--model".to_string(), model]);
+
+    let output = app
+        .shell()
+        .sidecar("prompt-agent-cli")
+        .map_err(|e| e.to_string())?
+        .args(&args)
+        .output()
+        .await
+        .map_err(|e| e.to_string())?;
+
+    if output.status.success() {
+        Ok(String::from_utf8_lossy(&output.stdout).to_string())
+    } else {
+        Err(String::from_utf8_lossy(&output.stderr).to_string())
+    }
+}
+
+/// Delete an engine config by name
+#[tauri::command]
+async fn delete_engine_config(app: AppHandle, engine: String) -> Result<String, String> {
+    let output = app
+        .shell()
+        .sidecar("prompt-agent-cli")
+        .map_err(|e| e.to_string())?
+        .args(["config", "delete-engine", &engine])
+        .output()
+        .await
+        .map_err(|e| e.to_string())?;
+
+    if output.status.success() {
+        Ok(String::from_utf8_lossy(&output.stdout).to_string())
+    } else {
+        Err(String::from_utf8_lossy(&output.stderr).to_string())
+    }
+}
+
+/// List run history as JSON (limit 50)
+#[tauri::command]
+async fn list_history(app: AppHandle) -> Result<String, String> {
+    let output = app
+        .shell()
+        .sidecar("prompt-agent-cli")
+        .map_err(|e| e.to_string())?
+        .args(["history", "--limit", "50", "--output-json"])
+        .output()
+        .await
+        .map_err(|e| e.to_string())?;
+
+    if output.status.success() {
+        Ok(String::from_utf8_lossy(&output.stdout).to_string())
+    } else {
+        Err(String::from_utf8_lossy(&output.stderr).to_string())
+    }
+}
+
+/// Clear all run history
+#[tauri::command]
+async fn clear_history(app: AppHandle) -> Result<String, String> {
+    let output = app
+        .shell()
+        .sidecar("prompt-agent-cli")
+        .map_err(|e| e.to_string())?
+        .args(["history", "clear", "--all"])
+        .output()
+        .await
+        .map_err(|e| e.to_string())?;
+
+    if output.status.success() {
+        Ok("cleared".to_string())
+    } else {
+        Err(String::from_utf8_lossy(&output.stderr).to_string())
+    }
+}
+
 /// Update an existing recipe via flags
 #[tauri::command]
 async fn update_recipe(
@@ -271,7 +370,7 @@ fn main() {
                 }
             }
         })
-        .invoke_handler(tauri::generate_handler![run_recipe, list_recipes, hide_window, save_recipe, update_recipe, delete_recipe])
+        .invoke_handler(tauri::generate_handler![run_recipe, list_recipes, hide_window, save_recipe, update_recipe, delete_recipe, get_engine_configs, save_engine_config, delete_engine_config, list_history, clear_history])
         .run(tauri::generate_context!())
         .expect("error while running tauri application");
 }

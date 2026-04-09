@@ -9,7 +9,8 @@ const listen = _tauri
 
 // ── State ─────────────────────────────────────────────────────────────────────
 let activeRecipe  = null;
-let editingRecipe = null;   // null = create mode, recipe object = edit mode
+let editingRecipe = null;
+let engineConfigs = {};   // raw configs from get_engine_configs
 const paramValues = { tone: 'casual', length: 'short', complexity: 'normal' };
 
 const PARAM_CONFIG = {
@@ -36,6 +37,10 @@ const paramsSection   = document.getElementById('params-section');
 const viewInput       = document.getElementById('view-input');
 const viewOutput      = document.getElementById('view-output');
 const viewForm        = document.getElementById('view-form');
+const viewSettings    = document.getElementById('view-settings');
+const settingsBtn     = document.querySelector('.hbtn[title="Settings"]');
+const settingsCloseBtn = document.getElementById('settings-close-btn');
+const settingsMsg     = document.getElementById('settings-msg');
 
 // ── Helpers ───────────────────────────────────────────────────────────────────
 function sparkleIcon() {
@@ -61,10 +66,14 @@ function slugify(s) {
 }
 
 // ── View switching ────────────────────────────────────────────────────────────
+const viewHistory  = document.getElementById('view-history');
+
 function showView(name) {
-  viewInput.style.display  = name === 'input'  ? 'flex' : 'none';
-  viewOutput.classList.toggle('visible', name === 'output');
-  viewForm.classList.toggle('visible',   name === 'form');
+  viewInput.style.display  = name === 'input'    ? 'flex' : 'none';
+  viewOutput.classList.toggle('visible',   name === 'output');
+  viewForm.classList.toggle('visible',     name === 'form');
+  viewSettings.classList.toggle('visible', name === 'settings');
+  viewHistory.classList.toggle('visible',  name === 'history');
 }
 
 // ── Recipes ───────────────────────────────────────────────────────────────────
@@ -166,42 +175,95 @@ await listen('selection', ({ payload }) => {
 });
 
 await listen('chunk', ({ payload }) => {
-  outputEl.textContent += payload;
-  outputEl.parentElement.scrollTop = outputEl.parentElement.scrollHeight;
+  const bodyEl = document.getElementById('output-body');
+  if (!bodyEl) return;
+  // Remove "thinking" indicator on first real chunk
+  const thinking = outputEl.querySelector('.output-thinking');
+  if (thinking) thinking.remove();
+  aiResponseText += payload;
+  // Render as plain text preserving newlines
+  bodyEl.textContent = aiResponseText;
+  outputEl.scrollTop = outputEl.scrollHeight;
 });
 
 await listen('error', ({ payload }) => {
-  outputEl.textContent += `\n[error] ${payload}`;
+  const bodyEl = document.getElementById('output-body');
+  if (bodyEl) {
+    const errEl = document.createElement('div');
+    errEl.className = 'output-error';
+    errEl.textContent = payload;
+    bodyEl.appendChild(errEl);
+  }
 });
 
 await listen('done', () => {
-  runBtn.disabled = false;
-  if (outputEl.textContent.trim()) copyBtn.style.display = '';
+  setRunLoading(false);
+  const thinking = outputEl.querySelector('.output-thinking');
+  if (thinking) thinking.remove();
+  const trimmed = aiResponseText.trim();
+  if (trimmed) {
+    copyBtn.style.display = '';
+    // Word count meta
+    const wordCount = trimmed.split(/\s+/).filter(Boolean).length;
+    const metaEl = document.getElementById('output-meta');
+    if (metaEl) metaEl.textContent = `${wordCount} words`;
+    // Done badge
+    const bodyEl = document.getElementById('output-body');
+    if (bodyEl && !bodyEl.querySelector('.output-done-badge')) {
+      const badge = document.createElement('div');
+      badge.className = 'output-done-badge';
+      badge.textContent = 'Done';
+      bodyEl.appendChild(badge);
+    }
+  }
 });
 
 // ── Run / Output ──────────────────────────────────────────────────────────────
 let currentSelection = '';
+let aiResponseText = '';   // pure AI text — used for copy
+
 inputArea.addEventListener('input', updateRunState);
+
+function setRunLoading(loading) {
+  const sendIcon = runBtn.querySelector('.run-icon-send');
+  const loadIcon = runBtn.querySelector('.run-icon-loading');
+  runBtn.disabled = loading;
+  runBtn.classList.toggle('loading', loading);
+  sendIcon.style.display = loading ? 'none' : '';
+  loadIcon.style.display = loading ? 'flex' : 'none';
+}
 
 runBtn.addEventListener('click', async () => {
   const text = inputArea.value.trim();
   if (!activeRecipe || !text) return;
+
+  aiResponseText = '';
   showView('output');
-  outputEl.textContent = '';
+  outputEl.innerHTML = '';
   copyBtn.style.display = 'none';
-  runBtn.disabled = true;
+  setRunLoading(true);
+
+  // Show engine badge
+  const engine = activeRecipe.engine || 'AI';
+  outputEl.innerHTML = `<div class="output-thinking"><span class="output-engine-dot"></span>Thinking with <strong>${engine}</strong>…</div><div class="output-body" id="output-body"></div>`;
+  const bodyEl = document.getElementById('output-body');
+
   try {
     await invoke('run_recipe', {
       recipeId:   activeRecipe.id,
       selection:  text,
-      engine:     activeRecipe.engine || '',
+      engine:     engine,
       tone:       paramValues.tone || '',
       length:     paramValues.length || '',
       complexity: paramValues.complexity || '',
     });
   } catch (err) {
-    outputEl.textContent = `Error: ${err}`;
-    runBtn.disabled = false;
+    const errEl = document.createElement('div');
+    errEl.className = 'output-error';
+    errEl.textContent = String(err);
+    outputEl.innerHTML = '';
+    outputEl.appendChild(errEl);
+    setRunLoading(false);
   }
 });
 
@@ -211,11 +273,10 @@ backBtn.addEventListener('click', () => {
 });
 
 copyBtn.addEventListener('click', async () => {
-  const text = outputEl.textContent;
+  const text = aiResponseText.trim();
+  if (!text) return;
   try {
     await navigator.clipboard.writeText(text);
-    copyBtn.textContent = '✓ Copied';
-    setTimeout(() => { copyBtn.textContent = 'Copy'; }, 1500);
   } catch {
     const ta = document.createElement('textarea');
     ta.value = text;
@@ -224,6 +285,8 @@ copyBtn.addEventListener('click', async () => {
     document.execCommand('copy');
     document.body.removeChild(ta);
   }
+  copyBtn.textContent = '✓ Copied';
+  setTimeout(() => { copyBtn.textContent = 'Copy'; }, 1800);
 });
 
 // ── Recipe Form (Create + Edit) ───────────────────────────────────────────────
@@ -234,7 +297,6 @@ function openCreateForm() {
   document.getElementById('f-desc').value = '';
   document.getElementById('f-template').value = '';
   document.getElementById('f-engine').value = 'gemini';
-  document.getElementById('f-icon').value = '';
   document.getElementById('fc-tone').checked = false;
   document.getElementById('fc-length').checked = false;
   document.getElementById('fc-complexity').checked = false;
@@ -251,7 +313,6 @@ function openEditForm(recipe) {
   document.getElementById('f-desc').value = recipe.description || '';
   document.getElementById('f-template').value = recipe.template || '';
   document.getElementById('f-engine').value = recipe.engine || 'gemini';
-  document.getElementById('f-icon').value = recipe.icon || '';
   const params = recipe.params || [];
   document.getElementById('fc-tone').checked = params.includes('tone');
   document.getElementById('fc-length').checked = params.includes('length');
@@ -278,7 +339,6 @@ formSaveBtn.addEventListener('click', async () => {
 
   const description   = document.getElementById('f-desc').value.trim();
   const engine        = document.getElementById('f-engine').value;
-  const icon          = document.getElementById('f-icon').value.trim();
   const checkedParams = ['tone', 'length', 'complexity']
     .filter(k => document.getElementById(`fc-${k}`).checked)
     .join(',');
@@ -287,11 +347,11 @@ formSaveBtn.addEventListener('click', async () => {
     if (editingRecipe) {
       await invoke('update_recipe', {
         id: editingRecipe.id, name, description, template, engine,
-        params: checkedParams, icon,
+        params: checkedParams, icon: '',
       });
     } else {
       const id = slugify(name) || `recipe_${Date.now()}`;
-      await invoke('save_recipe', { id, name, description, template, engine, params: checkedParams, icon });
+      await invoke('save_recipe', { id, name, description, template, engine, params: checkedParams, icon: '' });
     }
     await loadRecipes();
     showView('input');
@@ -328,6 +388,212 @@ document.addEventListener('keydown', e => {
   if (e.key === 'Enter' && !e.shiftKey && !runBtn.disabled && viewInput.style.display !== 'none') {
     e.preventDefault();
     runBtn.click();
+  }
+});
+
+// ── Settings ──────────────────────────────────────────────────────────────────
+const engineListEl    = document.getElementById('engine-list');
+const addEngineBtn    = document.getElementById('add-engine-btn');
+const engineForm      = document.getElementById('engine-form');
+const engineFormTitle = document.getElementById('engine-form-title');
+const engineFormCancel = document.getElementById('engine-form-cancel');
+const engineFormSave  = document.getElementById('engine-form-save');
+const engineFormErr   = document.getElementById('engine-form-err');
+const efId    = document.getElementById('ef-id');
+const efKey   = document.getElementById('ef-key');
+const efModel = document.getElementById('ef-model');
+
+let editingEngine = null; // null = new, string = engine id being edited
+
+async function loadEngineConfigs() {
+  try {
+    const json = await invoke('get_engine_configs');
+    engineConfigs = JSON.parse(json) || {};
+  } catch {
+    engineConfigs = {};
+  }
+  renderEngineList();
+}
+
+function renderEngineList() {
+  engineListEl.innerHTML = '';
+  const engines = Object.keys(engineConfigs);
+  if (engines.length === 0) {
+    engineListEl.innerHTML = '<p class="settings-empty">No engines configured yet.</p>';
+    return;
+  }
+  for (const eng of engines) {
+    const cfg = engineConfigs[eng] || {};
+    const key = cfg.api_key || '';
+    const model = cfg.model || '';
+    const hasKey = key !== '';
+    const card = document.createElement('div');
+    card.className = 'engine-card';
+    card.innerHTML = `
+      <div class="engine-header">
+        <span class="engine-dot"></span>
+        <span class="engine-name">${eng}</span>
+        <span class="engine-status ${hasKey ? 'configured' : 'empty'}">${hasKey ? 'Configured' : 'Not set'}</span>
+        <div class="engine-card-actions">
+          <button class="engine-edit-btn" data-engine="${eng}" title="Edit">Edit</button>
+          <button class="engine-del-btn" data-engine="${eng}" title="Delete">✕</button>
+        </div>
+      </div>
+      <div class="engine-info">
+        <span class="engine-info-row"><span class="engine-info-label">Key:</span> ${key.startsWith('env:') ? `<code>${key}</code>` : (hasKey ? '••••••••' : '—')}</span>
+        <span class="engine-info-row"><span class="engine-info-label">Model:</span> ${model || '—'}</span>
+      </div>
+    `;
+    card.querySelector('.engine-edit-btn').addEventListener('click', () => openEngineForm(eng));
+    card.querySelector('.engine-del-btn').addEventListener('click', () => deleteEngine(eng));
+    engineListEl.appendChild(card);
+  }
+}
+
+function openEngineForm(engId = null) {
+  editingEngine = engId;
+  engineFormTitle.textContent = engId ? `Edit — ${engId}` : 'New Engine';
+  efId.value    = engId || '';
+  efId.disabled = !!engId; // can't rename existing engine
+  const cfg     = engId ? (engineConfigs[engId] || {}) : {};
+  const key     = cfg.api_key || '';
+  efKey.value   = key.startsWith('env:') ? '' : key;
+  efKey.placeholder = key.startsWith('env:') ? key : (engId === 'gemini' ? 'AIza...' : engId === 'openai' ? 'sk-...' : engId === 'claude' ? 'sk-ant-...' : 'api-key');
+  efModel.value = cfg.model || '';
+  engineFormErr.textContent = '';
+  engineForm.classList.remove('hidden');
+  efId.focus();
+}
+
+function closeEngineForm() {
+  engineForm.classList.add('hidden');
+  editingEngine = null;
+}
+
+async function deleteEngine(eng) {
+  if (!confirm(`Delete engine "${eng}"?`)) return;
+  settingsMsg.textContent = '';
+  try {
+    await invoke('delete_engine_config', { engine: eng });
+    await loadEngineConfigs();
+    settingsMsg.textContent = `✓ Engine "${eng}" deleted`;
+    settingsMsg.className = 'settings-msg';
+    setTimeout(() => { settingsMsg.textContent = ''; }, 2500);
+  } catch (err) {
+    settingsMsg.textContent = String(err);
+    settingsMsg.className = 'settings-msg error';
+  }
+}
+
+addEngineBtn.addEventListener('click', () => openEngineForm(null));
+engineFormCancel.addEventListener('click', closeEngineForm);
+
+engineFormSave.addEventListener('click', async () => {
+  const id    = efId.value.trim();
+  const key   = efKey.value.trim();
+  const model = efModel.value.trim();
+
+  if (!id) { engineFormErr.textContent = 'Engine ID is required'; return; }
+
+  engineFormSave.disabled = true;
+  engineFormSave.textContent = 'Saving…';
+  engineFormErr.textContent = '';
+  settingsMsg.textContent = '';
+
+  try {
+    await invoke('save_engine_config', { engine: id, apiKey: key, model });
+    await loadEngineConfigs();
+    closeEngineForm();
+    settingsMsg.textContent = `✓ Engine "${id}" saved`;
+    settingsMsg.className = 'settings-msg';
+    setTimeout(() => { settingsMsg.textContent = ''; }, 2500);
+  } catch (err) {
+    engineFormErr.textContent = String(err);
+  } finally {
+    engineFormSave.disabled = false;
+    engineFormSave.textContent = 'Save';
+  }
+});
+
+settingsBtn.addEventListener('click', async () => {
+  await loadEngineConfigs();
+  closeEngineForm();
+  settingsMsg.textContent = '';
+  settingsMsg.className = 'settings-msg';
+  showView('settings');
+});
+
+settingsCloseBtn.addEventListener('click', () => showView('input'));
+
+// ── History ───────────────────────────────────────────────────────────────────
+const historyBtn      = document.getElementById('history-btn');
+const historyCloseBtn = document.getElementById('history-close-btn');
+const historyClearBtn = document.getElementById('history-clear-btn');
+const historyListEl   = document.getElementById('history-list');
+
+function formatTimeAgo(dateStr) {
+  const d = new Date(dateStr);
+  if (isNaN(d)) return '';
+  const diff = Date.now() - d.getTime();
+  const mins = Math.floor(diff / 60000);
+  if (mins < 1) return 'just now';
+  if (mins < 60) return `${mins}m ago`;
+  const hrs = Math.floor(mins / 60);
+  if (hrs < 24) return `${hrs}h ago`;
+  return `${Math.floor(hrs / 24)}d ago`;
+}
+
+async function loadHistory() {
+  historyListEl.innerHTML = '<p class="history-empty">Loading…</p>';
+  try {
+    const json = await invoke('list_history');
+    const records = JSON.parse(json) || [];
+    if (records.length === 0) {
+      historyListEl.innerHTML = '<p class="history-empty">No history yet.</p>';
+      return;
+    }
+    historyListEl.innerHTML = '';
+    for (const r of records) {
+      const item = document.createElement('div');
+      item.className = 'history-item';
+      const responseText  = (r.response     || '').trim();
+      const finalPrompt   = (r.final_prompt || '').trim();
+      const preview = responseText.slice(0, 100).replace(/\n+/g, ' ') || '(no response)';
+      item.innerHTML = `
+        <div class="history-item-header">
+          <span class="history-recipe">${r.prompt_id || '—'}</span>
+          <span class="history-engine">${r.engine || ''}</span>
+          <span class="history-time">${formatTimeAgo(r.created_at)}</span>
+        </div>
+        <div class="history-preview">${preview}</div>
+        <div class="history-detail">
+          ${finalPrompt ? `<div class="history-input-label">Prompt sent</div><div class="history-input-text">${finalPrompt}</div>` : ''}
+          <div class="history-response-label">Response</div>
+          <div class="history-response-text">${responseText || '(empty)'}</div>
+        </div>
+      `;
+      item.addEventListener('click', () => item.classList.toggle('expanded'));
+      historyListEl.appendChild(item);
+    }
+  } catch (err) {
+    historyListEl.innerHTML = `<p class="history-empty">${err}</p>`;
+  }
+}
+
+historyBtn.addEventListener('click', async () => {
+  await loadHistory();
+  showView('history');
+});
+
+historyCloseBtn.addEventListener('click', () => showView('input'));
+
+historyClearBtn.addEventListener('click', async () => {
+  if (!confirm('Clear all history?')) return;
+  try {
+    await invoke('clear_history');
+    await loadHistory();
+  } catch (err) {
+    alert(String(err));
   }
 });
 

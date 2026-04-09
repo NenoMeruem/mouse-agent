@@ -136,6 +136,15 @@ func (h *SQLiteHistoryStore) Clear(before time.Time) error {
 	return nil
 }
 
+// ClearAll deletes every run record unconditionally.
+func (h *SQLiteHistoryStore) ClearAll() error {
+	_, err := h.db.Exec(`DELETE FROM run_history`)
+	if err != nil {
+		return fmt.Errorf("cannot clear run history: %w", err)
+	}
+	return nil
+}
+
 // --- helpers ----------------------------------------------------------------
 
 func scanRecord(rows *sql.Rows) (*models.RunRecord, error) {
