@@ -363,6 +363,21 @@ formSaveBtn.addEventListener('click', async () => {
   }
 });
 
+// ── Window drag ───────────────────────────────────────────────────────────────
+// data-tauri-drag-region is set on #header but can be unreliable with
+// transparent + decoration-less windows on macOS. Manually call startDragging().
+function makeDraggable(el) {
+  el.addEventListener('mousedown', (e) => {
+    if (e.target.closest('button, input, textarea, select, a')) return;
+    if (e.button !== 0) return; // left click only
+    try {
+      _tauri?.window?.getCurrentWindow?.()?.startDragging?.();
+    } catch (_) {}
+  });
+}
+makeDraggable(document.getElementById('header'));
+makeDraggable(document.querySelector('.sidebar-header'));
+
 // ── Close / Keyboard ──────────────────────────────────────────────────────────
 closeBtn.addEventListener('click', () => {
   invoke('hide_window').catch(() => window.close());

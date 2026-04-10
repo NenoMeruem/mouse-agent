@@ -21,6 +21,11 @@
     "global-shortcut:allow-unregister",
     "global-shortcut:allow-is-registered",
     "clipboard-manager:allow-read-text",
-    "clipboard-manager:allow-write-text"
+    "clipboard-manager:allow-write-text",
+    "core:window:allow-start-dragging",
+    "core:window:allow-set-focus",
+    "core:window:allow-show",
+    "core:window:allow-hide",
+    "core:window:allow-is-focused"
   ]
 }

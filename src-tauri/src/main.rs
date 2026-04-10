@@ -363,10 +363,19 @@ fn main() {
             Ok(())
         })
         .on_window_event(|window, event| {
-            // Hide overlay when it loses focus
+            // Hide overlay when it loses focus — but delay to avoid hiding during drag.
+            // On macOS, WKWebView briefly fires Focused(false) when a native drag starts,
+            // which would immediately hide the window. We wait 400ms and re-check focus
+            // so a genuine click-outside still hides, but drags are not interrupted.
             if let tauri::WindowEvent::Focused(false) = event {
                 if window.label() == "overlay" {
-                    window.hide().ok();
+                    let w = window.clone();
+                    std::thread::spawn(move || {
+                        std::thread::sleep(std::time::Duration::from_millis(400));
+                        if !w.is_focused().unwrap_or(true) {
+                            w.hide().ok();
+                        }
+                    });
                 }
             }
         })
