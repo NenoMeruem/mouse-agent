@@ -51,9 +51,6 @@
           <div class="section-block">
             <div class="section-header">
               <span class="section-label">Instructions</span>
-              <button class="icon-btn" title="Edit">
-                <svg viewBox="0 0 24 24"><path d="M11 4H4a2 2 0 00-2 2v14a2 2 0 002 2h14a2 2 0 002-2v-7"/><path d="M18.5 2.5a2.121 2.121 0 013 3L12 15l-4 1 1-4 9.5-9.5z"/></svg>
-              </button>
             </div>
             <div id="instruction-card">
               <span id="instruction-text" class="ph">Select a recipe to see instructions…</span>
@@ -88,13 +85,21 @@
           </div>
           <div id="output-actions">
             <span class="output-meta" id="output-meta"></span>
-            <button id="copy-btn" style="display:none">
-              <svg width="12" height="12" viewBox="0 0 20 20" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
-                <rect x="8" y="8" width="10" height="10" rx="2"/>
-                <path d="M4 12H3a2 2 0 01-2-2V3a2 2 0 012-2h7a2 2 0 012 2v1"/>
-              </svg>
-              Copy
-            </button>
+            <div id="copy-wrap" class="copy-group" style="display:none">
+              <button id="copy-btn">
+                <svg width="12" height="12" viewBox="0 0 20 20" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+                  <rect x="8" y="8" width="10" height="10" rx="2"/>
+                  <path d="M4 12H3a2 2 0 01-2-2V3a2 2 0 012-2h7a2 2 0 012 2v1"/>
+                </svg>
+                Copy
+              </button>
+              <button id="copy-fmt-toggle" class="copy-fmt-toggle" title="More formats">▾</button>
+              <div id="copy-fmt-menu" class="copy-fmt-menu hidden">
+                <button class="copy-fmt-opt" data-fmt="text">Plain text</button>
+                <button class="copy-fmt-opt" data-fmt="html">HTML</button>
+                <button class="copy-fmt-opt" data-fmt="with-prompt">With prompt</button>
+              </div>
+            </div>
           </div>
         </div>
 
@@ -120,11 +125,7 @@
             </div>
             <div class="form-row">
               <label class="form-label">Engine</label>
-              <select class="form-input form-select" id="f-engine">
-                <option value="gemini">Gemini</option>
-                <option value="openai">OpenAI</option>
-                <option value="claude">Claude</option>
-              </select>
+              <select class="form-input form-select" id="f-engine"></select>
             </div>
             <div class="form-row">
               <label class="form-label">Parameters</label>
@@ -200,6 +201,18 @@
 
       </div><!-- /main -->
     </div><!-- /body -->
+
+    <!-- Delete confirmation modal -->
+    <div id="delete-modal" class="modal-overlay">
+      <div class="modal-box">
+        <p class="modal-text">Delete <strong id="delete-modal-name"></strong>?</p>
+        <div class="modal-actions">
+          <button class="modal-btn modal-cancel" id="delete-modal-cancel">Cancel</button>
+          <button class="modal-btn modal-danger" id="delete-modal-confirm">Delete</button>
+        </div>
+      </div>
+    </div>
+
   </div><!-- /app -->
 
   <script type="module" src="main.js"></script>

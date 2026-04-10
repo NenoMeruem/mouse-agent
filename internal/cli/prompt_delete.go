@@ -12,6 +12,7 @@ import (
 
 func init() {
 	promptCmd.AddCommand(promptDeleteCmd)
+	promptDeleteCmd.Flags().BoolP("yes", "y", false, "Skip confirmation prompt")
 }
 
 var promptDeleteCmd = &cobra.Command{
@@ -21,15 +22,17 @@ var promptDeleteCmd = &cobra.Command{
 	RunE: func(cmd *cobra.Command, args []string) error {
 		id := args[0]
 
-		// Confirm
-		reader := bufio.NewReader(os.Stdin)
-		fmt.Printf("Are you sure you want to delete prompt '%s'? (y/N): ", id)
-		response, _ := reader.ReadString('\n')
-		response = strings.ToLower(strings.TrimSpace(response))
+		skipConfirm, _ := cmd.Flags().GetBool("yes")
+		if !skipConfirm {
+			reader := bufio.NewReader(os.Stdin)
+			fmt.Printf("Are you sure you want to delete prompt '%s'? (y/N): ", id)
+			response, _ := reader.ReadString('\n')
+			response = strings.ToLower(strings.TrimSpace(response))
 
-		if response != "y" && response != "yes" {
-			fmt.Println("Cancelled")
-			return nil
+			if response != "y" && response != "yes" {
+				fmt.Println("Cancelled")
+				return nil
+			}
 		}
 
 		if err := app.GlobalContext.PromptStore.Delete(id); err != nil {

@@ -144,7 +144,7 @@ func (s *SQLiteStore) Get(id string) (*models.Prompt, error) {
 	return p, nil
 }
 
-// Delete removes a prompt by ID. Returns an error if the prompt does not exist.
+// Delete removes a prompt by ID. History records are kept as independent logs.
 func (s *SQLiteStore) Delete(id string) error {
 	res, err := s.db.Exec(`DELETE FROM prompts WHERE id = ?`, id)
 	if err != nil {

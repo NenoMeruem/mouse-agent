@@ -10,7 +10,10 @@ const listen = _tauri
 // ── State ─────────────────────────────────────────────────────────────────────
 let activeRecipe  = null;
 let editingRecipe = null;
-let engineConfigs = {};   // raw configs from get_engine_configs
+let pendingDeleteId = null;
+let engineConfigs = {};
+let allRecipes    = [];   // full list cache for pin re-render
+let pinnedIds     = JSON.parse(localStorage.getItem('pa_pinned') || '[]'); // ordered array
 const paramValues = { tone: 'casual', length: 'short', complexity: 'normal' };
 
 const PARAM_CONFIG = {
@@ -23,6 +26,9 @@ const PARAM_CONFIG = {
 const outputEl        = document.getElementById('output');
 const runBtn          = document.getElementById('run-btn');
 const copyBtn         = document.getElementById('copy-btn');
+const copyWrapEl      = document.getElementById('copy-wrap');
+const copyFmtToggle   = document.getElementById('copy-fmt-toggle');
+const copyFmtMenu     = document.getElementById('copy-fmt-menu');
 const closeBtn        = document.getElementById('close-btn');
 const backBtn         = document.getElementById('back-btn');
 const addRecipeBtn    = document.getElementById('add-recipe-btn');
@@ -42,6 +48,117 @@ const settingsBtn     = document.querySelector('.hbtn[title="Settings"]');
 const settingsCloseBtn = document.getElementById('settings-close-btn');
 const settingsMsg     = document.getElementById('settings-msg');
 
+// ── Markdown renderer ─────────────────────────────────────────────────────────
+function escapeHtml(s) {
+  return s.replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;').replace(/"/g,'&quot;');
+}
+
+function inlineMd(text) {
+  text = escapeHtml(text);
+  text = text.replace(/`([^`\n]+)`/g, '<code>$1</code>');
+  text = text.replace(/\*\*\*(.+?)\*\*\*/g, '<strong><em>$1</em></strong>');
+  text = text.replace(/\*\*(.+?)\*\*/g, '<strong>$1</strong>');
+  text = text.replace(/__(.+?)__/g, '<strong>$1</strong>');
+  text = text.replace(/\*([^*\n]+?)\*/g, '<em>$1</em>');
+  text = text.replace(/_([^_\n]+?)_/g, '<em>$1</em>');
+  text = text.replace(/~~(.+?)~~/g, '<del>$1</del>');
+  return text;
+}
+
+function renderMarkdown(raw) {
+  // Extract fenced code blocks to protect them from inline processing
+  const fences = [];
+  let md = raw.replace(/^```([\w.-]*)\r?\n([\s\S]*?)^```/gm, (_, lang, code) => {
+    fences.push({ lang, code: code.replace(/\n$/, '') });
+    return `\x01F${fences.length - 1}\x01`;
+  });
+  // Handle unclosed fence (mid-stream): render as open code block
+  md = md.replace(/^```([\w.-]*)\r?\n([\s\S]*)$/m, (_, lang, code) => {
+    fences.push({ lang, code });
+    return `\x01F${fences.length - 1}\x01`;
+  });
+
+  const lines  = md.split('\n');
+  const out    = [];
+  let i        = 0;
+
+  const flushFence = (token) => {
+    const idx = parseInt(token.match(/\d+/)[0]);
+    const { lang, code } = fences[idx];
+    const label = lang ? `<span class="md-code-lang">${escapeHtml(lang)}</span>` : '';
+    return `<pre class="md-pre">${label}<code class="md-code-block">${escapeHtml(code)}</code></pre>`;
+  };
+
+  while (i < lines.length) {
+    const line = lines[i];
+
+    // Code fence placeholder
+    if (/^\x01F\d+\x01$/.test(line.trim())) {
+      out.push(flushFence(line.trim()));
+      i++; continue;
+    }
+    // Heading
+    const hm = line.match(/^(#{1,6}) (.+)/);
+    if (hm) {
+      const lvl = Math.min(hm[1].length, 6);
+      out.push(`<h${lvl} class="md-h${lvl}">${inlineMd(hm[2].trim())}</h${lvl}>`);
+      i++; continue;
+    }
+    // Horizontal rule
+    if (/^[-*_]{3,}$/.test(line.trim())) {
+      out.push('<hr class="md-hr">');
+      i++; continue;
+    }
+    // Blockquote
+    if (line.startsWith('> ')) {
+      const qlines = [];
+      while (i < lines.length && lines[i].startsWith('> ')) { qlines.push(lines[i].slice(2)); i++; }
+      out.push(`<blockquote class="md-blockquote">${renderMarkdown(qlines.join('\n'))}</blockquote>`);
+      continue;
+    }
+    // Unordered list
+    if (/^[-*+] /.test(line)) {
+      const items = [];
+      while (i < lines.length && /^[-*+] /.test(lines[i])) {
+        items.push(`<li>${inlineMd(lines[i].replace(/^[-*+] /, ''))}</li>`);
+        i++;
+      }
+      out.push(`<ul class="md-ul">${items.join('')}</ul>`);
+      continue;
+    }
+    // Ordered list
+    if (/^\d+[.)]\s/.test(line)) {
+      const items = [];
+      while (i < lines.length && /^\d+[.)]\s/.test(lines[i])) {
+        items.push(`<li>${inlineMd(lines[i].replace(/^\d+[.)]\s/, ''))}</li>`);
+        i++;
+      }
+      out.push(`<ol class="md-ol">${items.join('')}</ol>`);
+      continue;
+    }
+    // Blank line
+    if (line.trim() === '') { i++; continue; }
+
+    // Paragraph — gather lines until block boundary
+    const plines = [];
+    while (i < lines.length) {
+      const l = lines[i];
+      if (l.trim() === '') break;
+      if (/^\x01F\d+\x01$/.test(l.trim())) break;
+      if (/^#{1,6} /.test(l)) break;
+      if (/^[-*_]{3,}$/.test(l.trim())) break;
+      if (/^[-*+] /.test(l)) break;
+      if (/^\d+[.)]\s/.test(l)) break;
+      if (l.startsWith('> ')) break;
+      plines.push(inlineMd(l));
+      i++;
+    }
+    if (plines.length) out.push(`<p class="md-p">${plines.join('<br>')}</p>`);
+  }
+
+  return out.join('');
+}
+
 // ── Helpers ───────────────────────────────────────────────────────────────────
 function sparkleIcon() {
   return `<svg viewBox="0 0 20 20" fill="currentColor">
@@ -56,6 +173,21 @@ function sparkleIcon() {
 function editIcon() {
   return `<svg viewBox="0 0 20 20" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round">
     <path d="M14.5 2.5a2.121 2.121 0 013 3L6 17l-4 1 1-4 11.5-11.5z"/>
+  </svg>`;
+}
+
+function trashIcon() {
+  return `<svg viewBox="0 0 20 20" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round">
+    <polyline points="3 5 5 5 17 5"/>
+    <path d="M8 5V3h4v2M5 5l1 11h8l1-11"/>
+  </svg>`;
+}
+
+function pinIcon(active) {
+  return `<svg viewBox="0 0 20 20" fill="${active ? 'currentColor' : 'none'}" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round">
+    <circle cx="10" cy="7" r="3"/>
+    <path d="M10 10v7M7 17h6"/>
+    <line x1="7" y1="4.5" x2="13" y2="4.5"/>
   </svg>`;
 }
 
@@ -81,37 +213,137 @@ async function loadRecipes() {
   try {
     const json = await invoke('list_recipes');
     const recipes = JSON.parse(json);
+    allRecipes = recipes;
     renderRecipeList(recipes);
-    if (recipes.length > 0) selectRecipe(recipes[0]);
+    // Restore last-used recipe, fall back to first
+    const lastId = localStorage.getItem('pa_last');
+    const toSelect = recipes.find(r => r.id === lastId) || recipes[0];
+    if (toSelect) selectRecipe(toSelect);
   } catch (err) {
     console.error('Failed to load recipes:', err);
   }
 }
 
+function sortedByPin(recipes) {
+  const pinned = pinnedIds.map(id => recipes.find(r => r.id === id)).filter(Boolean);
+  const rest   = recipes.filter(r => !pinnedIds.includes(r.id));
+  return [...pinned, ...rest];
+}
+
 function renderRecipeList(recipes) {
   recipeListEl.innerHTML = '';
-  for (const r of recipes) {
+  for (const r of sortedByPin(recipes)) {
+    const isPinned = pinnedIds.includes(r.id);
     const el = document.createElement('div');
-    el.className = 'recipe-item';
+    el.className = 'recipe-item' + (isPinned ? ' pinned' : '');
     el.dataset.id = r.id;
     el.innerHTML = `
       <span class="recipe-icon">${sparkleIcon()}</span>
       <span class="recipe-name">${r.name}</span>
-      <button class="recipe-edit-btn" title="Edit" data-id="${r.id}">${editIcon()}</button>
+      <div class="recipe-actions">
+        <button class="recipe-pin-btn ${isPinned ? 'active' : ''}" title="${isPinned ? 'Unpin' : 'Pin'}" data-id="${r.id}">${pinIcon(isPinned)}</button>
+        <button class="recipe-edit-btn" title="Edit" data-id="${r.id}">${editIcon()}</button>
+        <button class="recipe-del-btn" title="Delete" data-id="${r.id}">${trashIcon()}</button>
+      </div>
     `;
     el.addEventListener('click', (e) => {
-      if (!e.target.closest('.recipe-edit-btn')) selectRecipe(r);
+      if (!e.target.closest('.recipe-actions')) selectRecipe(r);
+    });
+    el.querySelector('.recipe-pin-btn').addEventListener('click', (e) => {
+      e.stopPropagation();
+      togglePin(r.id);
     });
     el.querySelector('.recipe-edit-btn').addEventListener('click', (e) => {
       e.stopPropagation();
       openEditForm(r);
     });
+    el.querySelector('.recipe-del-btn').addEventListener('click', (e) => {
+      e.stopPropagation();
+      showDeleteConfirm(r);
+    });
     recipeListEl.appendChild(el);
+  }
+}
+
+function togglePin(id) {
+  const idx = pinnedIds.indexOf(id);
+  if (idx === -1) pinnedIds.push(id);
+  else pinnedIds.splice(idx, 1);
+  localStorage.setItem('pa_pinned', JSON.stringify(pinnedIds));
+  renderRecipeList(allRecipes);
+  // Restore active highlight after re-render
+  if (activeRecipe) {
+    document.querySelectorAll('.recipe-item').forEach(el => {
+      el.classList.toggle('active', el.dataset.id === activeRecipe.id);
+    });
+  }
+}
+
+function showDeleteConfirm(recipe) {
+  pendingDeleteId = recipe.id;
+  const modal = document.getElementById('delete-modal');
+  document.getElementById('delete-modal-name').textContent = recipe.name || recipe.id;
+  modal.classList.add('visible');
+}
+
+function hideDeleteConfirm() {
+  pendingDeleteId = null;
+  document.getElementById('delete-modal').classList.remove('visible');
+}
+
+async function deleteRecipe(id) {
+  console.log('[delete] deleting recipe:', id);
+  try {
+    const result = await invoke('delete_recipe', { id });
+    console.log('[delete] result:', result);
+    if (activeRecipe && activeRecipe.id === id) {
+      activeRecipe = null;
+      instructionText.textContent = 'Select a recipe to see instructions…';
+      instructionText.classList.add('ph');
+      paramsSection.innerHTML = '';
+      updateRunState();
+    }
+    await loadRecipes();
+  } catch (err) {
+    console.error('[delete] error:', err);
+  }
+}
+
+document.getElementById('delete-modal-cancel').addEventListener('click', hideDeleteConfirm);
+document.getElementById('delete-modal-confirm').addEventListener('click', async () => {
+  if (pendingDeleteId) {
+    const id = pendingDeleteId;
+    hideDeleteConfirm();
+    await deleteRecipe(id);
+  }
+});
+document.getElementById('delete-modal').addEventListener('click', (e) => {
+  if (e.target === e.currentTarget) hideDeleteConfirm();
+});
+
+function populateEngineDropdown(selectedValue) {
+  const select = document.getElementById('f-engine');
+  select.innerHTML = '';
+  const engines = Object.keys(engineConfigs);
+  if (engines.length === 0) {
+    const opt = document.createElement('option');
+    opt.value = '';
+    opt.textContent = 'No engines configured';
+    select.appendChild(opt);
+  } else {
+    for (const eng of engines) {
+      const opt = document.createElement('option');
+      opt.value = eng;
+      opt.textContent = capitalize(eng);
+      select.appendChild(opt);
+    }
+    select.value = (selectedValue && engineConfigs[selectedValue]) ? selectedValue : engines[0];
   }
 }
 
 function selectRecipe(recipe) {
   activeRecipe = recipe;
+  localStorage.setItem('pa_last', recipe.id);
   document.querySelectorAll('.recipe-item').forEach(el => {
     el.classList.toggle('active', el.dataset.id === recipe.id);
   });
@@ -181,8 +413,7 @@ await listen('chunk', ({ payload }) => {
   const thinking = outputEl.querySelector('.output-thinking');
   if (thinking) thinking.remove();
   aiResponseText += payload;
-  // Render as plain text preserving newlines
-  bodyEl.textContent = aiResponseText;
+  bodyEl.innerHTML = renderMarkdown(aiResponseText);
   outputEl.scrollTop = outputEl.scrollHeight;
 });
 
@@ -202,7 +433,7 @@ await listen('done', () => {
   if (thinking) thinking.remove();
   const trimmed = aiResponseText.trim();
   if (trimmed) {
-    copyBtn.style.display = '';
+    copyWrapEl.style.display = '';
     // Word count meta
     const wordCount = trimmed.split(/\s+/).filter(Boolean).length;
     const metaEl = document.getElementById('output-meta');
@@ -237,25 +468,38 @@ runBtn.addEventListener('click', async () => {
   const text = inputArea.value.trim();
   if (!activeRecipe || !text) return;
 
+  // Guard: engine must have an API key configured
+  const engine = activeRecipe.engine || '';
+  const engineCfg = engineConfigs[engine] || {};
+  if (!engineCfg.api_key) {
+    showView('output');
+    outputEl.innerHTML = '';
+    copyWrapEl.style.display = 'none';
+    outputEl.innerHTML = `<div class="output-error no-key-error">
+      No API key for <strong>${engine || 'this engine'}</strong>.
+      Go to <strong>Settings ⚙</strong> and add the key first.
+    </div>`;
+    return;
+  }
+
   aiResponseText = '';
   showView('output');
   outputEl.innerHTML = '';
-  copyBtn.style.display = 'none';
+  copyWrapEl.style.display = 'none';
+  copyFmtMenu.classList.add('hidden');
   setRunLoading(true);
-
-  // Show engine badge
-  const engine = activeRecipe.engine || 'AI';
   outputEl.innerHTML = `<div class="output-thinking"><span class="output-engine-dot"></span>Thinking with <strong>${engine}</strong>…</div><div class="output-body" id="output-body"></div>`;
   const bodyEl = document.getElementById('output-body');
 
   try {
+    const recipeParams = activeRecipe.params || [];
     await invoke('run_recipe', {
       recipeId:   activeRecipe.id,
       selection:  text,
       engine:     engine,
-      tone:       paramValues.tone || '',
-      length:     paramValues.length || '',
-      complexity: paramValues.complexity || '',
+      tone:       recipeParams.includes('tone')       ? paramValues.tone       : '',
+      length:     recipeParams.includes('length')     ? paramValues.length     : '',
+      complexity: recipeParams.includes('complexity') ? paramValues.complexity : '',
     });
   } catch (err) {
     const errEl = document.createElement('div');
@@ -272,9 +516,7 @@ backBtn.addEventListener('click', () => {
   updateRunState();
 });
 
-copyBtn.addEventListener('click', async () => {
-  const text = aiResponseText.trim();
-  if (!text) return;
+async function writeToClipboard(text) {
   try {
     await navigator.clipboard.writeText(text);
   } catch {
@@ -285,9 +527,32 @@ copyBtn.addEventListener('click', async () => {
     document.execCommand('copy');
     document.body.removeChild(ta);
   }
-  copyBtn.textContent = '✓ Copied';
-  setTimeout(() => { copyBtn.textContent = 'Copy'; }, 1800);
+}
+
+async function copyAs(fmt) {
+  const text = aiResponseText.trim();
+  if (!text) return;
+  let content = text;
+  if (fmt === 'html') content = renderMarkdown(text);
+  if (fmt === 'with-prompt') content = `Input:\n${inputArea.value.trim()}\n\n---\n\n${text}`;
+  await writeToClipboard(content);
+  copyBtn.innerHTML = '✓ Copied';
+  setTimeout(() => { copyBtn.innerHTML = '<svg width="12" height="12" viewBox="0 0 20 20" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><rect x="8" y="8" width="10" height="10" rx="2"/><path d="M4 12H3a2 2 0 01-2-2V3a2 2 0 012-2h7a2 2 0 012 2v1"/></svg> Copy'; }, 1800);
+  copyFmtMenu.classList.add('hidden');
+}
+
+copyBtn.addEventListener('click', () => copyAs('text'));
+
+copyFmtToggle.addEventListener('click', (e) => {
+  e.stopPropagation();
+  copyFmtMenu.classList.toggle('hidden');
 });
+
+document.querySelectorAll('.copy-fmt-opt').forEach(opt => {
+  opt.addEventListener('click', () => copyAs(opt.dataset.fmt));
+});
+
+document.addEventListener('click', () => copyFmtMenu.classList.add('hidden'));
 
 // ── Recipe Form (Create + Edit) ───────────────────────────────────────────────
 function openCreateForm() {
@@ -296,7 +561,7 @@ function openCreateForm() {
   document.getElementById('f-name').value = '';
   document.getElementById('f-desc').value = '';
   document.getElementById('f-template').value = '';
-  document.getElementById('f-engine').value = 'gemini';
+  populateEngineDropdown('');
   document.getElementById('fc-tone').checked = false;
   document.getElementById('fc-length').checked = false;
   document.getElementById('fc-complexity').checked = false;
@@ -312,7 +577,7 @@ function openEditForm(recipe) {
   document.getElementById('f-name').value = recipe.name || '';
   document.getElementById('f-desc').value = recipe.description || '';
   document.getElementById('f-template').value = recipe.template || '';
-  document.getElementById('f-engine').value = recipe.engine || 'gemini';
+  populateEngineDropdown(recipe.engine || '');
   const params = recipe.params || [];
   document.getElementById('fc-tone').checked = params.includes('tone');
   document.getElementById('fc-length').checked = params.includes('length');
@@ -616,3 +881,4 @@ historyClearBtn.addEventListener('click', async () => {
 // ── Init ──────────────────────────────────────────────────────────────────────
 showView('input');
 loadRecipes();
+loadEngineConfigs();

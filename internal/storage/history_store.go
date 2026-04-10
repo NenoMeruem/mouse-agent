@@ -3,6 +3,7 @@ package storage
 import (
 	"database/sql"
 	"fmt"
+	"strings"
 	"time"
 
 	"github.com/sl/prompt-builder-agent/pkg/models"
@@ -18,8 +19,7 @@ CREATE TABLE IF NOT EXISTS run_history (
     response     TEXT DEFAULT '',
     duration_ms  INTEGER DEFAULT 0,
     error        TEXT DEFAULT '',
-    created_at   DATETIME NOT NULL,
-    FOREIGN KEY (prompt_id) REFERENCES prompts(id)
+    created_at   DATETIME NOT NULL
 );
 
 CREATE INDEX IF NOT EXISTS idx_history_prompt_id ON run_history(prompt_id);
@@ -32,12 +32,76 @@ type SQLiteHistoryStore struct {
 }
 
 // NewSQLiteHistoryStore creates a new history store sharing the given DB connection.
-// It initialises the run_history table and indices if they don't exist.
+// It migrates away any existing FOREIGN KEY constraint then ensures the table exists.
 func NewSQLiteHistoryStore(db *sql.DB) (*SQLiteHistoryStore, error) {
+	if err := migrateDropHistoryFK(db); err != nil {
+		return nil, fmt.Errorf("cannot migrate history table: %w", err)
+	}
 	if _, err := db.Exec(createHistoryTable); err != nil {
 		return nil, fmt.Errorf("cannot create history table: %w", err)
 	}
 	return &SQLiteHistoryStore{db: db}, nil
+}
+
+// migrateDropHistoryFK removes the FOREIGN KEY constraint from run_history if
+// it still exists. SQLite requires a table-recreation to drop constraints.
+func migrateDropHistoryFK(db *sql.DB) error {
+	var tableDef string
+	err := db.QueryRow(
+		`SELECT sql FROM sqlite_master WHERE type='table' AND name='run_history'`,
+	).Scan(&tableDef)
+	if err == sql.ErrNoRows {
+		return nil // table doesn't exist yet — nothing to migrate
+	}
+	if err != nil {
+		return err
+	}
+	if !strings.Contains(strings.ToUpper(tableDef), "FOREIGN KEY") {
+		return nil // already clean
+	}
+
+	// Disable FK enforcement during migration (must be outside a transaction).
+	if _, err := db.Exec(`PRAGMA foreign_keys = OFF`); err != nil {
+		return err
+	}
+
+	tx, err := db.Begin()
+	if err != nil {
+		return err
+	}
+	defer func() {
+		if tx != nil {
+			tx.Rollback() //nolint:errcheck
+		}
+		db.Exec(`PRAGMA foreign_keys = ON`) //nolint:errcheck
+	}()
+
+	steps := []string{
+		`CREATE TABLE run_history_v2 (
+			id           TEXT PRIMARY KEY,
+			prompt_id    TEXT NOT NULL,
+			engine       TEXT NOT NULL,
+			input_text   TEXT DEFAULT '',
+			final_prompt TEXT NOT NULL,
+			response     TEXT DEFAULT '',
+			duration_ms  INTEGER DEFAULT 0,
+			error        TEXT DEFAULT '',
+			created_at   DATETIME NOT NULL
+		)`,
+		`INSERT INTO run_history_v2 SELECT * FROM run_history`,
+		`DROP TABLE run_history`,
+		`ALTER TABLE run_history_v2 RENAME TO run_history`,
+	}
+	for _, q := range steps {
+		if _, err := tx.Exec(q); err != nil {
+			return fmt.Errorf("migration step failed: %w", err)
+		}
+	}
+	if err := tx.Commit(); err != nil {
+		return err
+	}
+	tx = nil // prevent rollback in defer
+	return nil
 }
 
 // Append inserts a new run record into the history table.

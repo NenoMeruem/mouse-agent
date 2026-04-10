@@ -28,3 +28,4 @@ src-tauri/binaries/
 
 # Claude Code local settings
 .claude/
+.specstory/*

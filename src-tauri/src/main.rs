@@ -159,7 +159,7 @@ async fn delete_recipe(app: AppHandle, id: String) -> Result<String, String> {
         .shell()
         .sidecar("prompt-agent-cli")
         .map_err(|e| e.to_string())?
-        .args(["prompt", "delete", &id])
+        .args(["prompt", "delete", &id, "--yes"])
         .output()
         .await
         .map_err(|e| e.to_string())?;
@@ -230,6 +230,21 @@ async fn delete_engine_config(app: AppHandle, engine: String) -> Result<String, 
     } else {
         Err(String::from_utf8_lossy(&output.stderr).to_string())
     }
+}
+
+/// Ping an engine to check if API key is valid and within quota
+#[tauri::command]
+async fn ping_engine(app: AppHandle, engine: String) -> Result<String, String> {
+    let output = app
+        .shell()
+        .sidecar("prompt-agent-cli")
+        .map_err(|e| e.to_string())?
+        .args(["config", "ping-engine", &engine])
+        .output()
+        .await
+        .map_err(|e| e.to_string())?;
+
+    Ok(String::from_utf8_lossy(&output.stdout).trim().to_string())
 }
 
 /// List run history as JSON (limit 50)
@@ -379,7 +394,7 @@ fn main() {
                 }
             }
         })
-        .invoke_handler(tauri::generate_handler![run_recipe, list_recipes, hide_window, save_recipe, update_recipe, delete_recipe, get_engine_configs, save_engine_config, delete_engine_config, list_history, clear_history])
+        .invoke_handler(tauri::generate_handler![run_recipe, list_recipes, hide_window, save_recipe, update_recipe, delete_recipe, get_engine_configs, save_engine_config, delete_engine_config, ping_engine, list_history, clear_history])
         .run(tauri::generate_context!())
         .expect("error while running tauri application");
 }
