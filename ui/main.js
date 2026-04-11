@@ -10,7 +10,8 @@ const listen = _tauri
 // ── State ─────────────────────────────────────────────────────────────────────
 let activeRecipe  = null;
 let editingRecipe = null;
-let pendingDeleteId = null;
+let pendingDeleteId     = null;  // recipe
+let pendingDeleteEngine = null;  // engine
 let engineConfigs = {};
 let allRecipes    = [];   // full list cache for pin re-render
 let pinnedIds     = JSON.parse(localStorage.getItem('pa_pinned') || '[]'); // ordered array
@@ -287,7 +288,8 @@ function showDeleteConfirm(recipe) {
 }
 
 function hideDeleteConfirm() {
-  pendingDeleteId = null;
+  pendingDeleteId     = null;
+  pendingDeleteEngine = null;
   document.getElementById('delete-modal').classList.remove('visible');
 }
 
@@ -315,6 +317,10 @@ document.getElementById('delete-modal-confirm').addEventListener('click', async 
     const id = pendingDeleteId;
     hideDeleteConfirm();
     await deleteRecipe(id);
+  } else if (pendingDeleteEngine) {
+    const eng = pendingDeleteEngine;
+    hideDeleteConfirm();
+    await doDeleteEngine(eng);
   }
 });
 document.getElementById('delete-modal').addEventListener('click', (e) => {
@@ -735,8 +741,13 @@ function closeEngineForm() {
   editingEngine = null;
 }
 
-async function deleteEngine(eng) {
-  if (!confirm(`Delete engine "${eng}"?`)) return;
+function deleteEngine(eng) {
+  pendingDeleteEngine = eng;
+  document.getElementById('delete-modal-name').textContent = `engine "${eng}"`;
+  document.getElementById('delete-modal').classList.add('visible');
+}
+
+async function doDeleteEngine(eng) {
   settingsMsg.textContent = '';
   try {
     await invoke('delete_engine_config', { engine: eng });
@@ -830,14 +841,28 @@ async function loadHistory() {
           <span class="history-engine">${r.engine || ''}</span>
           <span class="history-time">${formatTimeAgo(r.created_at)}</span>
         </div>
-        <div class="history-preview">${preview}</div>
+        <div class="history-preview">${escapeHtml(preview)}</div>
         <div class="history-detail">
-          ${finalPrompt ? `<div class="history-input-label">Prompt sent</div><div class="history-input-text">${finalPrompt}</div>` : ''}
-          <div class="history-response-label">Response</div>
-          <div class="history-response-text">${responseText || '(empty)'}</div>
+          ${finalPrompt ? `<div class="history-input-label">Prompt sent</div><div class="history-input-text">${escapeHtml(finalPrompt)}</div>` : ''}
+          <div class="history-response-header">
+            <span class="history-response-label">Response</span>
+            ${responseText ? `<button class="history-copy-btn" title="Copy response">Copy</button>` : ''}
+          </div>
+          <div class="history-response-text">${responseText ? renderMarkdown(responseText) : '<em>(empty)</em>'}</div>
         </div>
       `;
-      item.addEventListener('click', () => item.classList.toggle('expanded'));
+      item.addEventListener('click', (e) => {
+        if (!e.target.closest('.history-copy-btn')) item.classList.toggle('expanded');
+      });
+      if (responseText) {
+        item.querySelector('.history-copy-btn').addEventListener('click', async (e) => {
+          e.stopPropagation();
+          await writeToClipboard(responseText);
+          const btn = e.currentTarget;
+          btn.textContent = '✓ Copied';
+          setTimeout(() => { btn.textContent = 'Copy'; }, 1800);
+        });
+      }
       historyListEl.appendChild(item);
     }
   } catch (err) {
