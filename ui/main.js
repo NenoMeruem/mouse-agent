@@ -13,8 +13,7 @@ let editingRecipe = null;
 let pendingDeleteId     = null;  // recipe
 let pendingDeleteEngine = null;  // engine
 let engineConfigs = {};
-let allRecipes    = [];   // full list cache for pin re-render
-let pinnedIds     = JSON.parse(localStorage.getItem('pa_pinned') || '[]'); // ordered array
+let allRecipes    = [];   // full list cache for re-render
 const paramValues = { tone: 'casual', length: 'short', complexity: 'normal' };
 
 const PARAM_CONFIG = {
@@ -184,13 +183,6 @@ function trashIcon() {
   </svg>`;
 }
 
-function pinIcon(active) {
-  return `<svg viewBox="0 0 20 20" fill="${active ? 'currentColor' : 'none'}" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round">
-    <circle cx="10" cy="7" r="3"/>
-    <path d="M10 10v7M7 17h6"/>
-    <line x1="7" y1="4.5" x2="13" y2="4.5"/>
-  </svg>`;
-}
 
 function capitalize(s) { return s.charAt(0).toUpperCase() + s.slice(1); }
 
@@ -225,34 +217,77 @@ async function loadRecipes() {
   }
 }
 
-function sortedByPin(recipes) {
-  const pinned = pinnedIds.map(id => recipes.find(r => r.id === id)).filter(Boolean);
-  const rest   = recipes.filter(r => !pinnedIds.includes(r.id));
-  return [...pinned, ...rest];
+
+// ── Recipe drag-and-drop (mouse-event based — more reliable in Tauri WebView) ──
+let dragState = null; // { srcId, srcEl }
+
+function onDragMove(e) {
+  if (!dragState) return;
+  recipeListEl.querySelectorAll('.recipe-item').forEach(i => i.classList.remove('drag-over'));
+  const els = document.elementsFromPoint(e.clientX, e.clientY);
+  const target = els.find(el => el.classList.contains('recipe-item') && el.dataset.id && el.dataset.id !== dragState.srcId);
+  if (target) {
+    target.classList.add('drag-over');
+    dragState.currentTargetId = target.dataset.id;
+  } else {
+    dragState.currentTargetId = null;
+  }
+}
+
+async function onDragEnd() {
+  document.removeEventListener('mousemove', onDragMove);
+  document.removeEventListener('mouseup', onDragEnd);
+  if (!dragState) return;
+
+  dragState.srcEl.classList.remove('dragging');
+  recipeListEl.querySelectorAll('.recipe-item').forEach(i => i.classList.remove('drag-over'));
+
+  const { srcId, currentTargetId } = dragState;
+  dragState = null;
+
+  if (!currentTargetId || currentTargetId === srcId) return;
+
+  const items = [...recipeListEl.querySelectorAll('.recipe-item')];
+  const ids = items.map(i => i.dataset.id);
+  const srcIdx = ids.indexOf(srcId);
+  const dstIdx = ids.indexOf(currentTargetId);
+  if (srcIdx === -1 || dstIdx === -1) return;
+  ids.splice(srcIdx, 1);
+  ids.splice(dstIdx, 0, srcId);
+
+  const idToRecipe = Object.fromEntries(allRecipes.map(x => [x.id, x]));
+  allRecipes = ids.map(id => idToRecipe[id]).filter(Boolean);
+  renderRecipeList(allRecipes);
+  if (activeRecipe) {
+    document.querySelectorAll('.recipe-item').forEach(el => {
+      el.classList.toggle('active', el.dataset.id === activeRecipe.id);
+    });
+  }
+
+  try {
+    await invoke('reorder_recipes', { ids });
+  } catch (err) {
+    console.error('Failed to persist recipe order:', err);
+  }
 }
 
 function renderRecipeList(recipes) {
   recipeListEl.innerHTML = '';
-  for (const r of sortedByPin(recipes)) {
-    const isPinned = pinnedIds.includes(r.id);
+  for (const r of recipes) {
     const el = document.createElement('div');
-    el.className = 'recipe-item' + (isPinned ? ' pinned' : '');
+    el.className = 'recipe-item';
     el.dataset.id = r.id;
     el.innerHTML = `
+      <span class="recipe-drag-handle" title="Drag to reorder">⠿</span>
       <span class="recipe-icon">${sparkleIcon()}</span>
       <span class="recipe-name">${r.name}</span>
       <div class="recipe-actions">
-        <button class="recipe-pin-btn ${isPinned ? 'active' : ''}" title="${isPinned ? 'Unpin' : 'Pin'}" data-id="${r.id}">${pinIcon(isPinned)}</button>
         <button class="recipe-edit-btn" title="Edit" data-id="${r.id}">${editIcon()}</button>
         <button class="recipe-del-btn" title="Delete" data-id="${r.id}">${trashIcon()}</button>
       </div>
     `;
     el.addEventListener('click', (e) => {
-      if (!e.target.closest('.recipe-actions')) selectRecipe(r);
-    });
-    el.querySelector('.recipe-pin-btn').addEventListener('click', (e) => {
-      e.stopPropagation();
-      togglePin(r.id);
+      if (!e.target.closest('.recipe-actions, .recipe-drag-handle')) selectRecipe(r);
     });
     el.querySelector('.recipe-edit-btn').addEventListener('click', (e) => {
       e.stopPropagation();
@@ -262,23 +297,22 @@ function renderRecipeList(recipes) {
       e.stopPropagation();
       showDeleteConfirm(r);
     });
+
+    // Drag handle — mousedown starts the drag
+    el.querySelector('.recipe-drag-handle').addEventListener('mousedown', (e) => {
+      if (e.button !== 0) return;
+      e.preventDefault();
+      e.stopPropagation();
+      dragState = { srcId: r.id, srcEl: el, currentTargetId: null };
+      el.classList.add('dragging');
+      document.addEventListener('mousemove', onDragMove);
+      document.addEventListener('mouseup', onDragEnd);
+    });
+
     recipeListEl.appendChild(el);
   }
 }
 
-function togglePin(id) {
-  const idx = pinnedIds.indexOf(id);
-  if (idx === -1) pinnedIds.push(id);
-  else pinnedIds.splice(idx, 1);
-  localStorage.setItem('pa_pinned', JSON.stringify(pinnedIds));
-  renderRecipeList(allRecipes);
-  // Restore active highlight after re-render
-  if (activeRecipe) {
-    document.querySelectorAll('.recipe-item').forEach(el => {
-      el.classList.toggle('active', el.dataset.id === activeRecipe.id);
-    });
-  }
-}
 
 function showDeleteConfirm(recipe) {
   pendingDeleteId = recipe.id;
@@ -676,6 +710,23 @@ const efModel = document.getElementById('ef-model');
 
 let editingEngine = null; // null = new, string = engine id being edited
 
+const ENGINE_MODELS = {
+  gemini: ['gemini-2.5-flash', 'gemini-2.5-flash-lite', 'gemini-2.0-flash', 'gemini-1.5-flash', 'gemini-1.5-pro'],
+  claude: ['claude-opus-4-6', 'claude-sonnet-4-6', 'claude-haiku-4-5-20251001'],
+  openai: ['gpt-4o', 'gpt-4o-mini', 'gpt-4-turbo', 'gpt-3.5-turbo'],
+};
+
+function updateModelDatalist(engineId) {
+  const dl = document.getElementById('engine-model-list');
+  dl.innerHTML = '';
+  const models = ENGINE_MODELS[engineId] || [];
+  for (const m of models) {
+    const opt = document.createElement('option');
+    opt.value = m;
+    dl.appendChild(opt);
+  }
+}
+
 async function loadEngineConfigs() {
   try {
     const json = await invoke('get_engine_configs');
@@ -721,19 +772,27 @@ function renderEngineList() {
   }
 }
 
+const ENGINE_KEY_PLACEHOLDERS = { gemini: 'AIza...', claude: 'sk-ant-...', openai: 'sk-...' };
+
+function applyEngineFormDefaults(engId) {
+  updateModelDatalist(engId);
+  efKey.placeholder = ENGINE_KEY_PLACEHOLDERS[engId] || 'api-key';
+}
+
 function openEngineForm(engId = null) {
   editingEngine = engId;
   engineFormTitle.textContent = engId ? `Edit — ${engId}` : 'New Engine';
-  efId.value    = engId || '';
-  efId.disabled = !!engId; // can't rename existing engine
+  efId.value    = engId || 'gemini'; // default to first option
+  efId.disabled = !!engId; // can't change engine type when editing
   const cfg     = engId ? (engineConfigs[engId] || {}) : {};
   const key     = cfg.api_key || '';
   efKey.value   = key.startsWith('env:') ? '' : key;
-  efKey.placeholder = key.startsWith('env:') ? key : (engId === 'gemini' ? 'AIza...' : engId === 'openai' ? 'sk-...' : engId === 'claude' ? 'sk-ant-...' : 'api-key');
   efModel.value = cfg.model || '';
+  applyEngineFormDefaults(efId.value);
+  if (key.startsWith('env:')) efKey.placeholder = key;
   engineFormErr.textContent = '';
   engineForm.classList.remove('hidden');
-  efId.focus();
+  efKey.focus();
 }
 
 function closeEngineForm() {
@@ -764,12 +823,13 @@ async function doDeleteEngine(eng) {
 addEngineBtn.addEventListener('click', () => openEngineForm(null));
 engineFormCancel.addEventListener('click', closeEngineForm);
 
+// Update model suggestions and key placeholder when engine changes
+efId.addEventListener('change', () => applyEngineFormDefaults(efId.value));
+
 engineFormSave.addEventListener('click', async () => {
-  const id    = efId.value.trim();
+  const id    = efId.value;
   const key   = efKey.value.trim();
   const model = efModel.value.trim();
-
-  if (!id) { engineFormErr.textContent = 'Engine ID is required'; return; }
 
   engineFormSave.disabled = true;
   engineFormSave.textContent = 'Saving…';

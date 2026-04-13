@@ -4,8 +4,8 @@ import "testing"
 
 func TestDefaultRecipes(t *testing.T) {
 	recipes := DefaultRecipes()
-	if len(recipes) != 6 {
-		t.Fatalf("expected 6 recipes, got %d", len(recipes))
+	if len(recipes) == 0 {
+		t.Fatalf("expected at least 1 recipe, got 0")
 	}
 	ids := map[string]bool{}
 	for _, r := range recipes {

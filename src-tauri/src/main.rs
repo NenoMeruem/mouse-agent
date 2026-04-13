@@ -152,6 +152,28 @@ async fn save_recipe(
     }
 }
 
+/// Reorder recipes by providing IDs in the desired display order
+#[tauri::command]
+async fn reorder_recipes(app: AppHandle, ids: Vec<String>) -> Result<String, String> {
+    let mut args = vec!["prompt".to_string(), "reorder".to_string()];
+    args.extend(ids);
+
+    let output = app
+        .shell()
+        .sidecar("prompt-agent-cli")
+        .map_err(|e| e.to_string())?
+        .args(&args)
+        .output()
+        .await
+        .map_err(|e| e.to_string())?;
+
+    if output.status.success() {
+        Ok(String::from_utf8_lossy(&output.stdout).to_string())
+    } else {
+        Err(String::from_utf8_lossy(&output.stderr).to_string())
+    }
+}
+
 /// Delete a recipe by ID
 #[tauri::command]
 async fn delete_recipe(app: AppHandle, id: String) -> Result<String, String> {
@@ -394,7 +416,7 @@ fn main() {
                 }
             }
         })
-        .invoke_handler(tauri::generate_handler![run_recipe, list_recipes, hide_window, save_recipe, update_recipe, delete_recipe, get_engine_configs, save_engine_config, delete_engine_config, ping_engine, list_history, clear_history])
+        .invoke_handler(tauri::generate_handler![run_recipe, list_recipes, hide_window, save_recipe, update_recipe, delete_recipe, reorder_recipes, get_engine_configs, save_engine_config, delete_engine_config, ping_engine, list_history, clear_history])
         .run(tauri::generate_context!())
         .expect("error while running tauri application");
 }

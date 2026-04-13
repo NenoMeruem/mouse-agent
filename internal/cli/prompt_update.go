@@ -16,6 +16,7 @@ var (
 	upTemplate    string
 	upParams      []string
 	upIcon        string
+	upSortOrder   int
 )
 
 func init() {
@@ -27,6 +28,7 @@ func init() {
 	promptUpdateCmd.Flags().StringVar(&upTemplate, "template", "", "Prompt template")
 	promptUpdateCmd.Flags().StringSliceVar(&upParams, "params", nil, "Supported param keys, e.g. tone,length,complexity")
 	promptUpdateCmd.Flags().StringVar(&upIcon, "icon", "", "Icon emoji or name")
+	promptUpdateCmd.Flags().IntVar(&upSortOrder, "sort-order", 0, "Display sort order (lower = higher in list)")
 }
 
 var promptUpdateCmd = &cobra.Command{
@@ -67,6 +69,9 @@ var promptUpdateCmd = &cobra.Command{
 		}
 		if cmd.Flags().Changed("icon") {
 			existing.Icon = upIcon
+		}
+		if cmd.Flags().Changed("sort-order") {
+			existing.SortOrder = upSortOrder
 		}
 
 		if err := app.GlobalContext.PromptStore.Update(existing); err != nil {

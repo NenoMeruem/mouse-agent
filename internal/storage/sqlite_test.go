@@ -109,7 +109,7 @@ func TestSQLiteCreateDuplicate(t *testing.T) {
 	}
 }
 
-// TestSQLiteList creates multiple prompts and verifies List returns them newest first.
+// TestSQLiteList creates multiple prompts and verifies List returns them sorted by sort_order.
 func TestSQLiteList(t *testing.T) {
 	store := newTestSQLiteStore(t)
 
@@ -137,12 +137,12 @@ func TestSQLiteList(t *testing.T) {
 		t.Fatalf("expected 3 prompts, got %d", len(list))
 	}
 
-	// Newest first: "c" was inserted last with the largest offset.
-	if list[0].ID != "c" {
-		t.Errorf("expected first item to be 'c' (newest), got %q", list[0].ID)
+	// Items are ordered by sort_order ASC (insertion order: a=0, b=1, c=2).
+	if list[0].ID != "a" {
+		t.Errorf("expected first item to be 'a' (sort_order=0), got %q", list[0].ID)
 	}
-	if !list[0].CreatedAt.After(list[1].CreatedAt) {
-		t.Error("list is not sorted newest first")
+	if list[0].SortOrder > list[1].SortOrder {
+		t.Error("list is not sorted by sort_order ascending")
 	}
 }
 

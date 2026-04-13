@@ -16,7 +16,7 @@
       {
         "label": "overlay",
         "title": "Prompt Agent",
-        "width": 760,
+        "width": 780,
         "height": 600,
         "resizable": false,
         "decorations": false,

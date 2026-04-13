@@ -22,6 +22,7 @@ CREATE TABLE IF NOT EXISTS prompts (
     variables   TEXT DEFAULT '[]',
     params      TEXT DEFAULT '[]',
     icon        TEXT DEFAULT '',
+    sort_order  INTEGER NOT NULL DEFAULT 0,
     created_at  DATETIME NOT NULL,
     updated_at  DATETIME NOT NULL
 );`
@@ -54,6 +55,10 @@ func NewSQLiteStore(dbPath string) (*SQLiteStore, error) {
 		return nil, fmt.Errorf("cannot create prompts table: %w", err)
 	}
 
+	// Migrate existing DBs: add sort_order column if it doesn't exist yet.
+	// SQLite returns an error if the column already exists — safe to ignore.
+	db.Exec(`ALTER TABLE prompts ADD COLUMN sort_order INTEGER NOT NULL DEFAULT 0`)
+
 	return &SQLiteStore{db: db}, nil
 }
 
@@ -83,6 +88,13 @@ func (s *SQLiteStore) Create(prompt *models.Prompt) error {
 		prompt.UpdatedAt = time.Now()
 	}
 
+	// Auto-assign sort_order = max + 1 so new recipes appear at the end.
+	if prompt.SortOrder == 0 {
+		var maxOrder int
+		s.db.QueryRow(`SELECT COALESCE(MAX(sort_order), -1) FROM prompts`).Scan(&maxOrder)
+		prompt.SortOrder = maxOrder + 1
+	}
+
 	varsJSON, err := json.Marshal(prompt.Variables)
 	if err != nil {
 		return fmt.Errorf("cannot marshal variables: %w", err)
@@ -94,8 +106,8 @@ func (s *SQLiteStore) Create(prompt *models.Prompt) error {
 	}
 
 	_, err = s.db.Exec(
-		`INSERT INTO prompts (id, name, description, engine, template, variables, params, icon, created_at, updated_at)
-		 VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
+		`INSERT INTO prompts (id, name, description, engine, template, variables, params, icon, sort_order, created_at, updated_at)
+		 VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
 		prompt.ID,
 		prompt.Name,
 		prompt.Description,
@@ -104,6 +116,7 @@ func (s *SQLiteStore) Create(prompt *models.Prompt) error {
 		string(varsJSON),
 		string(paramsJSON),
 		prompt.Icon,
+		prompt.SortOrder,
 		prompt.CreatedAt.UTC().Format(time.RFC3339Nano),
 		prompt.UpdatedAt.UTC().Format(time.RFC3339Nano),
 	)
@@ -113,11 +126,11 @@ func (s *SQLiteStore) Create(prompt *models.Prompt) error {
 	return nil
 }
 
-// List returns all prompts sorted by created_at descending.
+// List returns all prompts sorted by sort_order ascending.
 func (s *SQLiteStore) List() ([]models.Prompt, error) {
 	rows, err := s.db.Query(
-		`SELECT id, name, description, engine, template, variables, params, icon, created_at, updated_at
-		 FROM prompts ORDER BY created_at DESC`,
+		`SELECT id, name, description, engine, template, variables, params, icon, sort_order, created_at, updated_at
+		 FROM prompts ORDER BY sort_order ASC, created_at DESC`,
 	)
 	if err != nil {
 		return nil, fmt.Errorf("cannot list prompts: %w", err)
@@ -130,7 +143,7 @@ func (s *SQLiteStore) List() ([]models.Prompt, error) {
 // Get retrieves a single prompt by ID. Returns an error if not found.
 func (s *SQLiteStore) Get(id string) (*models.Prompt, error) {
 	row := s.db.QueryRow(
-		`SELECT id, name, description, engine, template, variables, params, icon, created_at, updated_at
+		`SELECT id, name, description, engine, template, variables, params, icon, sort_order, created_at, updated_at
 		 FROM prompts WHERE id = ?`, id,
 	)
 
@@ -172,9 +185,9 @@ func (s *SQLiteStore) Update(prompt *models.Prompt) error {
 	}
 
 	result, err := s.db.Exec(
-		`UPDATE prompts SET name=?, description=?, engine=?, template=?, variables=?, params=?, icon=?, updated_at=? WHERE id=?`,
+		`UPDATE prompts SET name=?, description=?, engine=?, template=?, variables=?, params=?, icon=?, sort_order=?, updated_at=? WHERE id=?`,
 		prompt.Name, prompt.Description, prompt.Engine, prompt.Template,
-		string(varsJSON), string(paramsJSON), prompt.Icon,
+		string(varsJSON), string(paramsJSON), prompt.Icon, prompt.SortOrder,
 		prompt.UpdatedAt.UTC().Format(time.RFC3339Nano),
 		prompt.ID,
 	)
@@ -195,9 +208,9 @@ func (s *SQLiteStore) Search(query string) ([]models.Prompt, error) {
 	}
 	pattern := "%" + query + "%"
 	rows, err := s.db.Query(
-		`SELECT id, name, description, engine, template, variables, params, icon, created_at, updated_at
+		`SELECT id, name, description, engine, template, variables, params, icon, sort_order, created_at, updated_at
 		 FROM prompts WHERE name LIKE ? OR template LIKE ?
-		 ORDER BY created_at DESC`,
+		 ORDER BY sort_order ASC, created_at DESC`,
 		pattern, pattern,
 	)
 	if err != nil {
@@ -220,7 +233,7 @@ func scanPrompt(row scanner) (*models.Prompt, error) {
 
 	if err := row.Scan(
 		&p.ID, &p.Name, &p.Description, &p.Engine, &p.Template,
-		&varsJSON, &paramsJSON, &p.Icon, &createdStr, &updatedStr,
+		&varsJSON, &paramsJSON, &p.Icon, &p.SortOrder, &createdStr, &updatedStr,
 	); err != nil {
 		return nil, err
 	}

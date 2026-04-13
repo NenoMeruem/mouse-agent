@@ -178,16 +178,21 @@
                 <button class="icon-btn" id="engine-form-cancel">✕</button>
               </div>
               <div class="form-row">
-                <label class="form-label">Engine ID <span class="required">*</span> <span class="form-hint">(e.g. gemini, openai)</span></label>
-                <input class="form-input" id="ef-id" type="text" placeholder="my-engine" />
+                <label class="form-label">Engine <span class="required">*</span></label>
+                <select class="form-input form-select" id="ef-id">
+                  <option value="gemini">Gemini</option>
+                  <option value="claude">Claude</option>
+                  <option value="openai">OpenAI</option>
+                </select>
               </div>
               <div class="form-row">
                 <label class="form-label">API Key</label>
                 <input class="form-input" id="ef-key" type="password" placeholder="sk-..." autocomplete="off" />
               </div>
               <div class="form-row">
-                <label class="form-label">Model</label>
-                <input class="form-input" id="ef-model" type="text" placeholder="model-name" />
+                <label class="form-label">Model <span class="form-hint">— select a preset or type a custom name</span></label>
+                <input class="form-input" id="ef-model" type="text" placeholder="model-name" list="engine-model-list" autocomplete="off" />
+                <datalist id="engine-model-list"></datalist>
               </div>
               <div class="engine-form-footer">
                 <span id="engine-form-err" class="form-error"></span>
