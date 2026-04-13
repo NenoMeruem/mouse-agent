@@ -1,4 +1,4 @@
-module github.com/sl/prompt-builder-agent
+module github.com/meruem/prompt-builder-agent
 
 go 1.24.2
 

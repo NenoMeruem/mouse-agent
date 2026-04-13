@@ -8,7 +8,7 @@ import (
 	"testing"
 	"time"
 
-	"github.com/sl/prompt-builder-agent/pkg/models"
+	"github.com/meruem/prompt-builder-agent/pkg/models"
 )
 
 // newTestSQLiteStore creates a temporary SQLiteStore for testing.
@@ -116,9 +116,9 @@ func TestSQLiteList(t *testing.T) {
 	ids := []string{"a", "b", "c"}
 	for i, id := range ids {
 		p := &models.Prompt{
-			ID:     id,
-			Name:   "Prompt " + id,
-			Engine: "openai",
+			ID:       id,
+			Name:     "Prompt " + id,
+			Engine:   "openai",
 			Template: "T",
 			// Stagger timestamps so ordering is deterministic.
 			CreatedAt: time.Now().Add(time.Duration(i) * time.Millisecond),
@@ -479,9 +479,9 @@ func TestUpdateNotFound(t *testing.T) {
 	store := newTestSQLiteStore(t)
 
 	p := &models.Prompt{
-		ID:     "ghost",
-		Name:   "Ghost",
-		Engine: "openai",
+		ID:       "ghost",
+		Name:     "Ghost",
+		Engine:   "openai",
 		Template: "T",
 	}
 	if err := store.Update(p); err == nil {
@@ -528,18 +528,18 @@ func TestSearch(t *testing.T) {
 	store := newTestSQLiteStore(t)
 
 	p1 := &models.Prompt{
-		ID:       "s1",
-		Name:     "Explain Code",
-		Engine:   "openai",
-		Template: "Explain this code snippet",
+		ID:        "s1",
+		Name:      "Explain Code",
+		Engine:    "openai",
+		Template:  "Explain this code snippet",
 		CreatedAt: time.Now(),
 		UpdatedAt: time.Now(),
 	}
 	p2 := &models.Prompt{
-		ID:       "s2",
-		Name:     "Summarize Text",
-		Engine:   "gemini",
-		Template: "Summarize the following text",
+		ID:        "s2",
+		Name:      "Summarize Text",
+		Engine:    "gemini",
+		Template:  "Summarize the following text",
 		CreatedAt: time.Now().Add(-time.Minute),
 		UpdatedAt: time.Now().Add(-time.Minute),
 	}

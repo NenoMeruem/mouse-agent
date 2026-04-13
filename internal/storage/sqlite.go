@@ -8,7 +8,7 @@ import (
 	"path/filepath"
 	"time"
 
-	"github.com/sl/prompt-builder-agent/pkg/models"
+	"github.com/meruem/prompt-builder-agent/pkg/models"
 	_ "modernc.org/sqlite"
 )
 

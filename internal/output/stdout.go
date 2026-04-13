@@ -3,7 +3,7 @@ package output
 import (
 	"fmt"
 
-	"github.com/sl/prompt-builder-agent/internal/llm"
+	"github.com/meruem/prompt-builder-agent/internal/llm"
 )
 
 // StdoutStreamRenderer renders streaming output to stdout with decorators.

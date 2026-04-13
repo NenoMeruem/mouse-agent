@@ -6,7 +6,7 @@ import (
 	"strings"
 	"time"
 
-	"github.com/sl/prompt-builder-agent/pkg/models"
+	"github.com/meruem/prompt-builder-agent/pkg/models"
 )
 
 const createHistoryTable = `

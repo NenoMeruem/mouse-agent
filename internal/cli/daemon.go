@@ -7,8 +7,8 @@ import (
 	"os/signal"
 	"syscall"
 
-	"github.com/sl/prompt-builder-agent/internal/app"
-	"github.com/sl/prompt-builder-agent/internal/trigger"
+	"github.com/meruem/prompt-builder-agent/internal/app"
+	"github.com/meruem/prompt-builder-agent/internal/trigger"
 	"github.com/spf13/cobra"
 )
 

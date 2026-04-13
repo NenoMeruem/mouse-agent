@@ -6,11 +6,11 @@ import (
 	"os"
 	"strings"
 
-	"github.com/sl/prompt-builder-agent/internal/app"
-	"github.com/sl/prompt-builder-agent/pkg/models"
+	"github.com/meruem/prompt-builder-agent/internal/app"
+	"github.com/meruem/prompt-builder-agent/pkg/models"
 	"github.com/spf13/cobra"
 
-	promptlib "github.com/sl/prompt-builder-agent/internal/prompt"
+	promptlib "github.com/meruem/prompt-builder-agent/internal/prompt"
 )
 
 var (

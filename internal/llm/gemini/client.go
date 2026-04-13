@@ -7,7 +7,7 @@ import (
 	"time"
 
 	"github.com/google/generative-ai-go/genai"
-	"github.com/sl/prompt-builder-agent/internal/llm"
+	"github.com/meruem/prompt-builder-agent/internal/llm"
 	"google.golang.org/api/iterator"
 	"google.golang.org/api/option"
 )

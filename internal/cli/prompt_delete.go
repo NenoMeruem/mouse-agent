@@ -6,7 +6,7 @@ import (
 	"os"
 	"strings"
 
-	"github.com/sl/prompt-builder-agent/internal/app"
+	"github.com/meruem/prompt-builder-agent/internal/app"
 	"github.com/spf13/cobra"
 )
 

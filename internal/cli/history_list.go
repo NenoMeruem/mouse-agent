@@ -6,8 +6,8 @@ import (
 	"io"
 	"text/tabwriter"
 
-	"github.com/sl/prompt-builder-agent/internal/app"
-	"github.com/sl/prompt-builder-agent/pkg/models"
+	"github.com/meruem/prompt-builder-agent/internal/app"
+	"github.com/meruem/prompt-builder-agent/pkg/models"
 	"github.com/spf13/cobra"
 )
 

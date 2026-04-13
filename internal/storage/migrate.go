@@ -5,7 +5,7 @@ import (
 	"fmt"
 	"os"
 
-	"github.com/sl/prompt-builder-agent/pkg/models"
+	"github.com/meruem/prompt-builder-agent/pkg/models"
 )
 
 // MigrateFromJSON checks if jsonPath exists and no prompts are in SQLite yet.

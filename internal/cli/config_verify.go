@@ -4,8 +4,8 @@ import (
 	"fmt"
 	"os"
 
-	"github.com/sl/prompt-builder-agent/internal/config"
-	"github.com/sl/prompt-builder-agent/internal/llm"
+	"github.com/meruem/prompt-builder-agent/internal/config"
+	"github.com/meruem/prompt-builder-agent/internal/llm"
 	"github.com/spf13/cobra"
 )
 

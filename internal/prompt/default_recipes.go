@@ -3,7 +3,7 @@ package prompt
 import (
 	"time"
 
-	"github.com/sl/prompt-builder-agent/pkg/models"
+	"github.com/meruem/prompt-builder-agent/pkg/models"
 )
 
 // DefaultRecipes returns the built-in recipe definitions seeded from the

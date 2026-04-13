@@ -11,7 +11,7 @@ import (
 	"strings"
 	"time"
 
-	"github.com/sl/prompt-builder-agent/internal/llm"
+	"github.com/meruem/prompt-builder-agent/internal/llm"
 )
 
 // Client implements the llm.Client interface for Anthropic's Claude API.

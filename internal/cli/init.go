@@ -5,8 +5,8 @@ import (
 	"os"
 	"path/filepath"
 
-	promptlib "github.com/sl/prompt-builder-agent/internal/prompt"
-	"github.com/sl/prompt-builder-agent/internal/storage"
+	promptlib "github.com/meruem/prompt-builder-agent/internal/prompt"
+	"github.com/meruem/prompt-builder-agent/internal/storage"
 	"github.com/spf13/cobra"
 )
 

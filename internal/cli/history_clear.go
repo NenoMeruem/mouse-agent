@@ -6,10 +6,9 @@ import (
 	"strings"
 	"time"
 
-	"github.com/sl/prompt-builder-agent/internal/app"
+	"github.com/meruem/prompt-builder-agent/internal/app"
 	"github.com/spf13/cobra"
 )
-
 
 var historyClearCmd = &cobra.Command{
 	Use:   "clear",

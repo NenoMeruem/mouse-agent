@@ -10,7 +10,7 @@ import (
 	"sync"
 	"time"
 
-	"github.com/sl/prompt-builder-agent/pkg/models"
+	"github.com/meruem/prompt-builder-agent/pkg/models"
 )
 
 // JSONStore provides thread-safe storage for prompts using JSON files.

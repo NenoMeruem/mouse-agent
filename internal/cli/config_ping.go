@@ -8,17 +8,17 @@ import (
 	"strings"
 	"time"
 
-	"github.com/sl/prompt-builder-agent/internal/config"
-	"github.com/sl/prompt-builder-agent/internal/llm"
-	"github.com/sl/prompt-builder-agent/internal/llm/claude"
-	"github.com/sl/prompt-builder-agent/internal/llm/gemini"
-	"github.com/sl/prompt-builder-agent/internal/llm/openai"
+	"github.com/meruem/prompt-builder-agent/internal/config"
+	"github.com/meruem/prompt-builder-agent/internal/llm"
+	"github.com/meruem/prompt-builder-agent/internal/llm/claude"
+	"github.com/meruem/prompt-builder-agent/internal/llm/gemini"
+	"github.com/meruem/prompt-builder-agent/internal/llm/openai"
 	"github.com/spf13/cobra"
 )
 
 // PingResult is the JSON result returned by ping-engine.
 type PingResult struct {
-	Status  string `json:"status"`  // ok | rate_limited | auth_error | no_key | error
+	Status  string `json:"status"` // ok | rate_limited | auth_error | no_key | error
 	Message string `json:"message"`
 }
 
