@@ -440,10 +440,12 @@ function updateRunState() {
 // ── Tauri events ──────────────────────────────────────────────────────────────
 await listen('selection', ({ payload }) => {
   currentSelection = payload || '';
+  // Always reset to input view so clipboard context is visible and ready
+  showView('input');
   if (currentSelection) {
     inputArea.value = currentSelection;
-    updateRunState();
   }
+  updateRunState();
 });
 
 await listen('chunk', ({ payload }) => {

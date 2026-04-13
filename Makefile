@@ -1,4 +1,4 @@
-.PHONY: build build-sidecar dev-tauri test clean
+.PHONY: build build-sidecar dev-tauri release test clean
 
 # Build Go CLI binary
 build:
@@ -14,6 +14,13 @@ build-sidecar: build
 # Run Tauri in dev mode (builds sidecar first)
 dev-tauri: build-sidecar
 	cd src-tauri && cargo tauri dev
+
+# Build production .app + .dmg (output: src-tauri/target/release/bundle/)
+release: build-sidecar
+	cd src-tauri && cargo tauri build
+	@echo ""
+	@echo "✅ App:  src-tauri/target/release/bundle/macos/Prompt Agent.app"
+	@echo "✅ DMG:  src-tauri/target/release/bundle/dmg/Prompt Agent_"*".dmg"
 
 # Run Go tests
 test:
