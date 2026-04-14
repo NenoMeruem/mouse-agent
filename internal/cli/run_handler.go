@@ -18,6 +18,7 @@ import (
 	"github.com/meruem/prompt-builder-agent/internal/llm/claude"
 	"github.com/meruem/prompt-builder-agent/internal/llm/gemini"
 	"github.com/meruem/prompt-builder-agent/internal/llm/openai"
+	"github.com/meruem/prompt-builder-agent/internal/logger"
 	"github.com/meruem/prompt-builder-agent/internal/output"
 	promptlib "github.com/meruem/prompt-builder-agent/internal/prompt"
 	"github.com/meruem/prompt-builder-agent/pkg/models"
@@ -35,6 +36,7 @@ func runPromptCommand(cmd *cobra.Command, args []string) error {
 	// Get prompt definition
 	promptDef, err := app.GlobalContext.PromptStore.Get(id)
 	if err != nil {
+		logger.Error("prompt not found", "id", id, "error", err)
 		return fmt.Errorf("❌ prompt not found: %s", id)
 	}
 
@@ -120,10 +122,13 @@ func runPromptCommand(cmd *cobra.Command, args []string) error {
 
 	// Send to LLM if engine is specified
 	if engine != "" && engine != "none" {
+		logger.Info("running prompt", "id", id, "engine", engine)
 		response, durationMs, err := runWithLLM(finalPrompt, engine)
 		if err != nil {
+			logger.Error("LLM run failed", "id", id, "engine", engine, "error", err)
 			return err
 		}
+		logger.Info("prompt completed", "id", id, "engine", engine, "duration_ms", durationMs)
 
 		// Save to history (non-fatal)
 		if app.GlobalContext.HistoryStore != nil {
@@ -137,7 +142,9 @@ func runPromptCommand(cmd *cobra.Command, args []string) error {
 				DurationMs:  durationMs,
 				CreatedAt:   time.Now(),
 			}
-			_ = app.GlobalContext.HistoryStore.Append(record)
+			if err := app.GlobalContext.HistoryStore.Append(record); err != nil {
+				logger.Warn("failed to save history", "error", err)
+			}
 		}
 		return nil
 	}
@@ -218,6 +225,7 @@ func runWithLLM(prompt, engine string) (string, int64, error) {
 	}
 	ch, err := client.Stream(ctx, req)
 	if err != nil {
+		logger.Error("stream start failed", "engine", engine, "error", err)
 		return "", 0, fmt.Errorf("❌ failed to start streaming: %w", err)
 	}
 

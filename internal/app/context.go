@@ -5,6 +5,7 @@ import (
 	"fmt"
 
 	"github.com/meruem/prompt-builder-agent/internal/config"
+	"github.com/meruem/prompt-builder-agent/internal/logger"
 	"github.com/meruem/prompt-builder-agent/internal/prompt"
 	"github.com/meruem/prompt-builder-agent/internal/selection"
 	"github.com/meruem/prompt-builder-agent/internal/storage"
@@ -37,6 +38,7 @@ func InitializeContext() error {
 	// Run one-time migration from JSON if needed (non-fatal).
 	jsonPath := storage.GetDefaultJSONPath()
 	if err := storage.MigrateFromJSON(store, jsonPath); err != nil {
+		logger.Warn("JSON migration failed", "error", err)
 		fmt.Printf("warning: JSON migration failed: %v\n", err)
 	}
 
