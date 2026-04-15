@@ -30,6 +30,7 @@ type Config struct {
 }
 
 type EngineConfig struct {
+	Name    string        `mapstructure:"name"`
 	APIKey  string        `mapstructure:"api_key"`
 	Model   string        `mapstructure:"model"`
 	Timeout time.Duration `mapstructure:"timeout"`
@@ -147,6 +148,26 @@ func resolveAPIKey(raw string) string {
 		return os.Getenv(strings.TrimPrefix(raw, "env:"))
 	}
 	return raw
+}
+
+// GetEngineName returns the display name for the given engine.
+// It uses the configured name first, then falls back to a built-in display name.
+func GetEngineName(engine string) string {
+	if AppConfig != nil && AppConfig.Engines != nil {
+		if cfg, ok := AppConfig.Engines[engine]; ok && cfg.Name != "" {
+			return cfg.Name
+		}
+	}
+	switch engine {
+	case "openai":
+		return "OpenAI"
+	case "gemini":
+		return "Google Gemini"
+	case "claude":
+		return "Claude"
+	default:
+		return engine
+	}
 }
 
 // GetEngineAPIKey returns the resolved API key for the given engine.

@@ -5,6 +5,8 @@ use tauri::{AppHandle, Emitter, Manager};
 use tauri_plugin_shell::ShellExt;
 use tauri_plugin_shell::process::CommandEvent;
 
+const DEFAULT_HOTKEY: &str = "Alt+Space";
+
 /// Run a recipe by spawning the Go sidecar, piping selection text via stdin,
 /// and streaming stdout chunks back to the WebView as events.
 #[tauri::command]
@@ -91,6 +93,13 @@ async fn list_recipes(app: AppHandle) -> Result<String, String> {
         .map_err(|e| e.to_string())?;
 
     Ok(String::from_utf8_lossy(&output.stdout).to_string())
+}
+
+/// Read clipboard text — called by JS on startup to pre-populate selection
+#[tauri::command]
+fn get_clipboard(app: AppHandle) -> String {
+    use tauri_plugin_clipboard_manager::ClipboardExt;
+    app.clipboard().read_text().unwrap_or_default()
 }
 
 /// Hide the overlay window
@@ -214,10 +223,14 @@ async fn save_engine_config(
     engine: String,
     api_key: String,
     model: String,
+    name: String,
 ) -> Result<String, String> {
     let mut args = vec!["config".to_string(), "set-engine".to_string(), engine];
     args.extend(["--api-key".to_string(), api_key]);
     args.extend(["--model".to_string(), model]);
+    if !name.is_empty() {
+        args.extend(["--name".to_string(), name]);
+    }
 
     let output = app
         .shell()
@@ -343,6 +356,50 @@ async fn update_recipe(
     }
 }
 
+/// Return the currently configured hotkey string.
+#[tauri::command]
+async fn get_hotkey(app: AppHandle) -> String {
+    match app
+        .shell()
+        .sidecar("prompt-agent-cli")
+        .unwrap()
+        .args(["config", "get-hotkey"])
+        .output()
+        .await
+    {
+        Ok(output) => {
+            let hk = String::from_utf8_lossy(&output.stdout).trim().to_string();
+            if hk.is_empty() { DEFAULT_HOTKEY.to_string() } else { hk }
+        }
+        Err(_) => DEFAULT_HOTKEY.to_string(),
+    }
+}
+
+/// Save a new hotkey and re-register the global shortcut immediately.
+#[tauri::command]
+async fn set_hotkey(app: AppHandle, hotkey: String) -> Result<(), String> {
+    use tauri_plugin_global_shortcut::GlobalShortcutExt;
+
+    // Persist via Go CLI
+    app.shell()
+        .sidecar("prompt-agent-cli")
+        .map_err(|e| e.to_string())?
+        .args(["config", "set-hotkey", &hotkey])
+        .output()
+        .await
+        .map_err(|e| e.to_string())?;
+
+    // Unregister all current shortcuts, then register the new one
+    app.global_shortcut()
+        .unregister_all()
+        .map_err(|e| e.to_string())?;
+    app.global_shortcut()
+        .register(hotkey.as_str())
+        .map_err(|e| e.to_string())?;
+
+    Ok(())
+}
+
 fn main() {
     tauri::Builder::default()
         .plugin(tauri_plugin_shell::init())
@@ -374,9 +431,39 @@ fn main() {
                 .build(),
         )
         .setup(|app| {
-            // Register global hotkey Alt+Space
+            // Register default hotkey immediately, then async re-register
+            // from config.yaml in case the user has customised it.
             use tauri_plugin_global_shortcut::GlobalShortcutExt;
-            app.global_shortcut().register("Alt+Space")?;
+            app.global_shortcut().register(DEFAULT_HOTKEY)?;
+
+            let app_handle = app.handle().clone();
+            tauri::async_runtime::spawn(async move {
+                use tauri_plugin_global_shortcut::GlobalShortcutExt;
+                if let Ok(output) = app_handle
+                    .shell()
+                    .sidecar("prompt-agent-cli")
+                    .unwrap()
+                    .args(["config", "get-hotkey"])
+                    .output()
+                    .await
+                {
+                    let hk = String::from_utf8_lossy(&output.stdout).trim().to_string();
+                    if !hk.is_empty() && hk != DEFAULT_HOTKEY {
+                        let _ = app_handle.global_shortcut().unregister_all();
+                        let _ = app_handle.global_shortcut().register(hk.as_str());
+                    }
+                }
+            });
+
+            // macOS: hide from dock — must be set before showing the window
+            #[cfg(target_os = "macos")]
+            app.set_activation_policy(tauri::ActivationPolicy::Accessory);
+
+            // Show window on startup — clipboard is loaded by JS after page load
+            if let Some(window) = app.get_webview_window("overlay") {
+                window.show().ok();
+                window.set_focus().ok();
+            }
 
             // System tray
             use tauri::tray::{TrayIconBuilder, TrayIconEvent};
@@ -392,10 +479,6 @@ fn main() {
                     }
                 })
                 .build(app)?;
-
-            // macOS: hide from dock
-            #[cfg(target_os = "macos")]
-            app.set_activation_policy(tauri::ActivationPolicy::Accessory);
 
             Ok(())
         })
@@ -416,7 +499,7 @@ fn main() {
                 }
             }
         })
-        .invoke_handler(tauri::generate_handler![run_recipe, list_recipes, hide_window, save_recipe, update_recipe, delete_recipe, reorder_recipes, get_engine_configs, save_engine_config, delete_engine_config, ping_engine, list_history, clear_history])
+        .invoke_handler(tauri::generate_handler![run_recipe, list_recipes, hide_window, get_clipboard, save_recipe, update_recipe, delete_recipe, reorder_recipes, get_engine_configs, save_engine_config, delete_engine_config, ping_engine, list_history, clear_history, get_hotkey, set_hotkey])
         .run(tauri::generate_context!())
         .expect("error while running tauri application");
 }

@@ -557,6 +557,7 @@ body {
 .add-engine-btn:hover { background: #ede9fe; }
 
 #settings-scroll { flex: 1; overflow-y: auto; display: flex; flex-direction: column; gap: 8px; min-height: 0; }
+/* legacy — no longer used as wrapper, kept for safety */
 .settings-empty { font-size: 12px; color: var(--text-3); text-align: center; padding: 20px 0; }
 
 .engine-card {
@@ -577,7 +578,12 @@ body {
   box-shadow: 0 0 0 2px rgba(124,58,237,0.12);
 }
 
-.engine-name { font-size: 13px; font-weight: 700; color: var(--text-1); flex: 1; }
+.engine-name { font-size: 13px; font-weight: 700; color: var(--text-1); }
+.engine-id-badge {
+  font-size: 10px; font-weight: 500; color: var(--text-3);
+  background: var(--bg); border: 1px solid var(--border);
+  border-radius: 4px; padding: 1px 5px; flex: 1;
+}
 
 .engine-status {
   font-size: 11px; font-weight: 600; padding: 2px 8px; border-radius: 20px;
@@ -620,6 +626,116 @@ body {
 
 .settings-msg { font-size: 12px; text-align: center; min-height: 18px; color: var(--success); flex-shrink: 0; }
 .settings-msg.error { color: var(--danger); }
+
+/* ── Settings Tabs ───────────────────────────────────────────────────────────── */
+.settings-tabs {
+  display: flex; gap: 2px;
+  background: var(--bg); border: 1px solid var(--border);
+  border-radius: var(--radius-sm); padding: 3px;
+  flex-shrink: 0;
+}
+.settings-tab {
+  flex: 1; padding: 5px 0; border: none; border-radius: 5px;
+  background: transparent; color: var(--text-3);
+  font-size: 12px; font-weight: 600; font-family: inherit;
+  cursor: pointer; transition: all 0.15s;
+}
+.settings-tab:hover { color: var(--text-1); }
+.settings-tab.active {
+  background: var(--surface); color: var(--text-1);
+  box-shadow: var(--shadow-sm);
+}
+
+.settings-tab-panel { display: none; flex-direction: column; gap: 8px; flex: 1; overflow-y: auto; min-height: 0; }
+.settings-tab-panel.active { display: flex; }
+
+/* ── Hotkeys tab ─────────────────────────────────────────────────────────────── */
+.hotkey-recorder-card {
+  background: var(--surface); border: 1px solid var(--border);
+  border-radius: var(--radius-sm); padding: 14px 16px;
+  display: flex; flex-direction: column; gap: 10px; flex-shrink: 0;
+}
+.hotkey-recorder-label { font-size: 11px; font-weight: 600; color: var(--text-3); text-transform: uppercase; letter-spacing: .04em; }
+
+.hotkey-recorder-row { display: flex; gap: 10px; align-items: center; }
+
+.hotkey-display {
+  flex: 1; background: var(--bg); border: 1px solid var(--border);
+  border-radius: var(--radius-sm); padding: 8px 14px;
+  font-family: monospace; font-size: 14px; font-weight: 700;
+  color: var(--accent); letter-spacing: .03em;
+}
+
+.hotkey-record-btn {
+  padding: 7px 16px; border-radius: var(--radius-sm);
+  border: 1px solid var(--accent-border); background: var(--accent-dim);
+  color: var(--accent); font-size: 12px; font-weight: 700;
+  font-family: inherit; cursor: pointer; transition: all 0.12s; flex-shrink: 0;
+}
+.hotkey-record-btn:hover { background: #ede9fe; }
+.hotkey-record-btn.recording {
+  background: var(--danger-bg); border-color: var(--danger);
+  color: var(--danger);
+}
+
+.hotkey-recording-hint {
+  font-size: 12px; color: var(--text-2);
+  padding: 6px 10px; background: #fef9c3;
+  border: 1px solid #fde68a; border-radius: var(--radius-sm);
+  animation: pulse-hint 1s ease-in-out infinite alternate;
+}
+.hotkey-recording-hint.hidden { display: none; }
+.hotkey-hint-esc { color: var(--text-3); font-size: 11px; }
+
+@keyframes pulse-hint {
+  from { opacity: 0.8; }
+  to   { opacity: 1; }
+}
+
+.hotkey-how-row {
+  display: flex; gap: 10px; align-items: center;
+  background: var(--surface); border: 1px solid var(--border);
+  border-radius: var(--radius-sm); padding: 10px 12px; flex-shrink: 0;
+}
+.hotkey-how-icon { font-size: 15px; flex-shrink: 0; }
+.hotkey-how-text { font-size: 12px; color: var(--text-2); line-height: 1.5; }
+
+/* ── About tab ───────────────────────────────────────────────────────────────── */
+.about-logo {
+  display: flex; flex-direction: column; align-items: center;
+  gap: 4px; padding: 16px 0 10px;
+}
+.about-icon {
+  font-size: 28px; line-height: 1;
+  color: var(--accent); font-weight: 900;
+}
+.about-app-name { font-size: 16px; font-weight: 800; color: var(--text-1); }
+.about-version  { font-size: 11px; color: var(--text-3); font-weight: 500; }
+
+.about-desc {
+  font-size: 12px; color: var(--text-2); line-height: 1.6;
+  text-align: center; margin: 0; padding: 0 4px;
+}
+
+.about-features { display: flex; flex-direction: column; gap: 6px; }
+.about-feature-row {
+  display: flex; gap: 10px; align-items: center;
+  font-size: 12px; color: var(--text-2);
+  background: var(--surface); border: 1px solid var(--border);
+  border-radius: var(--radius-sm); padding: 8px 12px;
+}
+.about-feature-icon { font-size: 14px; flex-shrink: 0; }
+
+.about-stack {
+  display: flex; align-items: center; gap: 6px;
+  justify-content: center; padding: 4px 0 8px;
+}
+.about-stack-label { font-size: 11px; color: var(--text-3); }
+.about-chip {
+  font-size: 11px; font-weight: 600; color: var(--accent);
+  background: var(--accent-dim); border: 1px solid var(--accent-border);
+  border-radius: 20px; padding: 2px 8px;
+}
 
 /* ── History View ────────────────────────────────────────────────────────────── */
 #view-history { display: none; flex-direction: column; gap: 8px; height: 100%; }

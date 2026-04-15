@@ -96,7 +96,7 @@ func runPromptCommand(cmd *cobra.Command, args []string) error {
 	if dryRun {
 		fmt.Printf("🔍 DRY RUN - Final Prompt:\n%s\n", finalPrompt)
 		if !rawOutput {
-			fmt.Printf("\n📋 Engine: %s | Variables: %v\n", promptDef.Engine, promptDef.Variables)
+			fmt.Printf("\n📋 Engine: %s | Variables: %v\n", config.GetEngineName(promptDef.Engine), promptDef.Variables)
 		}
 		return nil
 	}
@@ -221,7 +221,7 @@ func runWithLLM(prompt, engine string) (string, int64, error) {
 
 	// Start streaming from LLM (suppress status line in raw/Tauri mode)
 	if !rawOutput {
-		fmt.Printf("🚀 Streaming from %s...\n", engine)
+		fmt.Printf("🚀 Streaming from %s...\n", config.GetEngineName(engine))
 	}
 	ch, err := client.Stream(ctx, req)
 	if err != nil {

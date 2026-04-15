@@ -13,6 +13,7 @@ import (
 var (
 	setEngineAPIKey string
 	setEngineModel  string
+	setEngineName   string
 )
 
 func init() {
@@ -22,10 +23,12 @@ func init() {
 
 	setEngineCmd.Flags().StringVar(&setEngineAPIKey, "api-key", "", "API key (plain text or env:VAR_NAME)")
 	setEngineCmd.Flags().StringVar(&setEngineModel, "model", "", "Model name")
+	setEngineCmd.Flags().StringVar(&setEngineName, "name", "", "Display name for this engine")
 }
 
 // EngineConfigJSON is the JSON representation returned by get-engines.
 type EngineConfigJSON struct {
+	Name   string `json:"name"`
 	APIKey string `json:"api_key"`
 	Model  string `json:"model"`
 }
@@ -47,6 +50,9 @@ var getEnginesCmd = &cobra.Command{
 			for name, v := range engs {
 				if m, ok := v.(map[string]interface{}); ok {
 					ec := EngineConfigJSON{}
+					if n, ok := m["name"].(string); ok {
+						ec.Name = n
+					}
 					if k, ok := m["api_key"].(string); ok {
 						ec.APIKey = k
 					}
@@ -89,6 +95,9 @@ var setEngineCmd = &cobra.Command{
 			entry = map[string]interface{}{}
 		}
 
+		if cmd.Flags().Changed("name") {
+			entry["name"] = setEngineName
+		}
 		if cmd.Flags().Changed("api-key") {
 			entry["api_key"] = setEngineAPIKey
 		}

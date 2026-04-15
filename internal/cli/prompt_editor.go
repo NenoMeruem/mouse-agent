@@ -10,6 +10,7 @@ import (
 	"github.com/charmbracelet/bubbles/viewport"
 	tea "github.com/charmbracelet/bubbletea"
 	"github.com/charmbracelet/lipgloss"
+	"github.com/meruem/prompt-builder-agent/internal/config"
 )
 
 type editorKeyMap struct {
@@ -109,7 +110,7 @@ func (m promptEditorModel) View() string {
 			Background(lipgloss.Color("55")).
 			Foreground(lipgloss.Color("183")).
 			Padding(0, 1).
-			Render(m.engine)
+			Render(config.GetEngineName(m.engine))
 	}
 
 	headerRight := engineBadge

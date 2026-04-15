@@ -374,7 +374,8 @@ function populateEngineDropdown(selectedValue) {
     for (const eng of engines) {
       const opt = document.createElement('option');
       opt.value = eng;
-      opt.textContent = capitalize(eng);
+      const cfg = engineConfigs[eng] || {};
+      opt.textContent = cfg.name || capitalize(eng);
       select.appendChild(opt);
     }
     select.value = (selectedValue && engineConfigs[selectedValue]) ? selectedValue : engines[0];
@@ -707,6 +708,7 @@ const engineFormCancel = document.getElementById('engine-form-cancel');
 const engineFormSave  = document.getElementById('engine-form-save');
 const engineFormErr   = document.getElementById('engine-form-err');
 const efId    = document.getElementById('ef-id');
+const efName  = document.getElementById('ef-name');
 const efKey   = document.getElementById('ef-key');
 const efModel = document.getElementById('ef-model');
 
@@ -750,13 +752,15 @@ function renderEngineList() {
     const cfg = engineConfigs[eng] || {};
     const key = cfg.api_key || '';
     const model = cfg.model || '';
+    const displayName = cfg.name || eng;
     const hasKey = key !== '';
     const card = document.createElement('div');
     card.className = 'engine-card';
     card.innerHTML = `
       <div class="engine-header">
         <span class="engine-dot"></span>
-        <span class="engine-name">${eng}</span>
+        <span class="engine-name">${displayName}</span>
+        ${cfg.name ? `<span class="engine-id-badge">${eng}</span>` : ''}
         <span class="engine-status ${hasKey ? 'configured' : 'empty'}">${hasKey ? 'Configured' : 'Not set'}</span>
         <div class="engine-card-actions">
           <button class="engine-edit-btn" data-engine="${eng}" title="Edit">Edit</button>
@@ -788,6 +792,7 @@ function openEngineForm(engId = null) {
   efId.disabled = !!engId; // can't change engine type when editing
   const cfg     = engId ? (engineConfigs[engId] || {}) : {};
   const key     = cfg.api_key || '';
+  efName.value  = cfg.name || '';
   efKey.value   = key.startsWith('env:') ? '' : key;
   efModel.value = cfg.model || '';
   applyEngineFormDefaults(efId.value);
@@ -800,6 +805,7 @@ function openEngineForm(engId = null) {
 function closeEngineForm() {
   engineForm.classList.add('hidden');
   editingEngine = null;
+  efName.value = '';
 }
 
 function deleteEngine(eng) {
@@ -830,6 +836,7 @@ efId.addEventListener('change', () => applyEngineFormDefaults(efId.value));
 
 engineFormSave.addEventListener('click', async () => {
   const id    = efId.value;
+  const name  = efName.value.trim();
   const key   = efKey.value.trim();
   const model = efModel.value.trim();
 
@@ -839,7 +846,7 @@ engineFormSave.addEventListener('click', async () => {
   settingsMsg.textContent = '';
 
   try {
-    await invoke('save_engine_config', { engine: id, apiKey: key, model });
+    await invoke('save_engine_config', { engine: id, apiKey: key, model, name });
     await loadEngineConfigs();
     closeEngineForm();
     settingsMsg.textContent = `✓ Engine "${id}" saved`;
@@ -853,11 +860,112 @@ engineFormSave.addEventListener('click', async () => {
   }
 });
 
+// ── Hotkey recorder ───────────────────────────────────────────────────────────
+const hotkeyDisplayText  = document.getElementById('hotkey-display-text');
+const hotkeyRecordBtn    = document.getElementById('hotkey-record-btn');
+const hotkeyRecordingHint = document.getElementById('hotkey-recording-hint');
+const hotkeyMsg          = document.getElementById('hotkey-msg');
+
+let isRecording = false;
+
+async function loadHotkey() {
+  try {
+    const hk = await invoke('get_hotkey');
+    hotkeyDisplayText.textContent = hk || 'Alt+Space';
+  } catch {
+    hotkeyDisplayText.textContent = 'Alt+Space';
+  }
+}
+
+function startRecording() {
+  isRecording = true;
+  hotkeyRecordBtn.textContent = 'Cancel';
+  hotkeyRecordBtn.classList.add('recording');
+  hotkeyRecordingHint.classList.remove('hidden');
+  hotkeyDisplayText.textContent = '…';
+}
+
+function stopRecording() {
+  isRecording = false;
+  hotkeyRecordBtn.textContent = 'Change';
+  hotkeyRecordBtn.classList.remove('recording');
+  hotkeyRecordingHint.classList.add('hidden');
+}
+
+hotkeyRecordBtn.addEventListener('click', () => {
+  if (isRecording) {
+    stopRecording();
+    loadHotkey(); // restore previous
+  } else {
+    startRecording();
+  }
+});
+
+document.addEventListener('keydown', async (e) => {
+  if (!isRecording) return;
+  e.preventDefault();
+
+  if (e.key === 'Escape') {
+    stopRecording();
+    loadHotkey();
+    return;
+  }
+
+  // Need at least one modifier
+  const mods = [];
+  if (e.ctrlKey)  mods.push('Ctrl');
+  if (e.altKey)   mods.push('Alt');
+  if (e.shiftKey) mods.push('Shift');
+  if (e.metaKey)  mods.push('Super');
+
+  const modKeys = new Set(['Control','Alt','Shift','Meta']);
+  if (modKeys.has(e.key)) return; // still waiting for the main key
+
+  if (mods.length === 0) return; // require at least one modifier
+
+  const key = e.code.startsWith('Key')   ? e.code.slice(3)      // KeyA → A
+            : e.code.startsWith('Digit') ? e.code.slice(5)      // Digit1 → 1
+            : e.code === 'Space'         ? 'Space'
+            : e.key;
+
+  const hotkey = [...mods, key].join('+');
+  hotkeyDisplayText.textContent = hotkey;
+  stopRecording();
+
+  hotkeyMsg.textContent = '';
+  try {
+    await invoke('set_hotkey', { hotkey });
+    hotkeyMsg.textContent = `✓ Hotkey saved: ${hotkey}`;
+    hotkeyMsg.className = 'settings-msg';
+    setTimeout(() => { hotkeyMsg.textContent = ''; }, 2500);
+  } catch (err) {
+    hotkeyMsg.textContent = String(err);
+    hotkeyMsg.className = 'settings-msg error';
+    loadHotkey();
+  }
+});
+
+// ── Settings tabs ─────────────────────────────────────────────────────────────
+function switchSettingsTab(tabName) {
+  document.querySelectorAll('.settings-tab').forEach(btn => {
+    btn.classList.toggle('active', btn.dataset.tab === tabName);
+  });
+  document.querySelectorAll('.settings-tab-panel').forEach(panel => {
+    panel.classList.toggle('active', panel.id === `settings-tab-${tabName}`);
+  });
+  if (tabName === 'hotkeys') loadHotkey();
+}
+
+document.querySelectorAll('.settings-tab').forEach(btn => {
+  btn.addEventListener('click', () => switchSettingsTab(btn.dataset.tab));
+});
+
 settingsBtn.addEventListener('click', async () => {
   await loadEngineConfigs();
   closeEngineForm();
   settingsMsg.textContent = '';
   settingsMsg.className = 'settings-msg';
+  switchSettingsTab('engines');
   showView('settings');
 });
 
@@ -969,3 +1077,12 @@ historyClearBtn.addEventListener('click', async () => {
 showView('input');
 loadRecipes();
 loadEngineConfigs();
+
+// Load clipboard on startup — runs after all variables are declared
+invoke('get_clipboard').then(clip => {
+  if (clip) {
+    currentSelection = clip;
+    inputArea.value = clip;
+    updateRunState();
+  }
+}).catch(() => {});

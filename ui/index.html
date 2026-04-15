@@ -162,16 +162,22 @@
             <button class="back-btn" id="settings-close-btn">✕ Close</button>
           </div>
 
-          <div id="settings-scroll">
+          <!-- Tab bar -->
+          <div class="settings-tabs">
+            <button class="settings-tab active" data-tab="engines">Engines</button>
+            <button class="settings-tab" data-tab="hotkeys">Hotkeys</button>
+            <button class="settings-tab" data-tab="about">About</button>
+          </div>
+
+          <!-- ── Tab: Engines ── -->
+          <div id="settings-tab-engines" class="settings-tab-panel active">
             <div class="settings-top-bar">
               <p class="settings-desc">Configure your AI engine API keys and models.</p>
               <button class="add-engine-btn" id="add-engine-btn">+ Add Engine</button>
             </div>
 
-            <!-- Dynamic engine list -->
             <div id="engine-list"></div>
 
-            <!-- Add / Edit engine inline form -->
             <div id="engine-form" class="engine-form hidden">
               <div class="engine-form-header">
                 <span id="engine-form-title">New Engine</span>
@@ -184,6 +190,10 @@
                   <option value="claude">Claude</option>
                   <option value="openai">OpenAI</option>
                 </select>
+              </div>
+              <div class="form-row">
+                <label class="form-label">Display Name <span class="form-hint">— shown in response header</span></label>
+                <input class="form-input" id="ef-name" type="text" placeholder="e.g. Gemini Flash" autocomplete="off" />
               </div>
               <div class="form-row">
                 <label class="form-label">API Key</label>
@@ -202,6 +212,78 @@
 
             <div id="settings-msg" class="settings-msg"></div>
           </div>
+
+          <!-- ── Tab: Hotkeys ── -->
+          <div id="settings-tab-hotkeys" class="settings-tab-panel">
+            <p class="settings-desc">
+              Global shortcut to show/hide this overlay from anywhere on your system.
+            </p>
+
+            <div class="hotkey-recorder-card">
+              <div class="hotkey-recorder-label">Trigger hotkey</div>
+              <div class="hotkey-recorder-row">
+                <div id="hotkey-display" class="hotkey-display">
+                  <span id="hotkey-display-text">Alt+Space</span>
+                </div>
+                <button id="hotkey-record-btn" class="hotkey-record-btn">Change</button>
+              </div>
+              <div id="hotkey-recording-hint" class="hotkey-recording-hint hidden">
+                Press your key combination… <span class="hotkey-hint-esc">(Esc to cancel)</span>
+              </div>
+            </div>
+
+            <div class="hotkey-how-row">
+              <span class="hotkey-how-icon">💡</span>
+              <span class="hotkey-how-text">Press the hotkey anywhere → overlay opens, clipboard is read automatically.</span>
+            </div>
+
+            <div id="hotkey-msg" class="settings-msg"></div>
+          </div>
+
+          <!-- ── Tab: About ── -->
+          <div id="settings-tab-about" class="settings-tab-panel">
+            <div class="about-logo">
+              <div class="about-icon">✦</div>
+              <div class="about-app-name">Prompt Agent</div>
+              <div class="about-version" id="about-version">v0.1.0</div>
+            </div>
+
+            <p class="about-desc">
+              A lightweight overlay for running AI prompt recipes against clipboard content —
+              right from any app, without switching windows.
+            </p>
+
+            <div class="about-features">
+              <div class="about-feature-row">
+                <span class="about-feature-icon">📋</span>
+                <span>Reads clipboard automatically on trigger</span>
+              </div>
+              <div class="about-feature-row">
+                <span class="about-feature-icon">⚡</span>
+                <span>Streams responses in real time</span>
+              </div>
+              <div class="about-feature-row">
+                <span class="about-feature-icon">🧩</span>
+                <span>Reusable recipe templates with variables</span>
+              </div>
+              <div class="about-feature-row">
+                <span class="about-feature-icon">🔌</span>
+                <span>Supports OpenAI, Google Gemini, Claude</span>
+              </div>
+              <div class="about-feature-row">
+                <span class="about-feature-icon">💾</span>
+                <span>SQLite storage — no cloud, fully local</span>
+              </div>
+            </div>
+
+            <div class="about-stack">
+              <span class="about-stack-label">Built with</span>
+              <span class="about-chip">Go</span>
+              <span class="about-chip">Tauri v2</span>
+              <span class="about-chip">Rust</span>
+            </div>
+          </div>
+
         </div><!-- /view-settings -->
 
       </div><!-- /main -->
