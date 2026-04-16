@@ -1,0 +1,102 @@
+name: Release
+
+on:
+  push:
+    tags: ['v*']
+
+permissions:
+  contents: write
+
+jobs:
+  # ── 1. CLI binaries via GoReleaser ────────────────────────────────────────────
+  # Runs on macOS so darwin builds get CGO=1 (required for golang.design/x/hotkey).
+  # Linux + Windows are cross-compiled with CGO=0 from the same runner.
+  cli-release:
+    runs-on: macos-latest
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          fetch-depth: 0   # GoReleaser needs full history for changelog
+
+      - uses: actions/setup-go@v5
+        with:
+          go-version: '1.24'
+
+      - uses: goreleaser/goreleaser-action@v6
+        with:
+          args: release --clean
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+          HOMEBREW_TAP_GITHUB_TOKEN: ${{ secrets.HOMEBREW_TAP_GITHUB_TOKEN }}
+          GITHUB_USERNAME: ${{ github.repository_owner }}
+
+  # ── 2. Tauri bundles (.app / .dmg / .deb / .exe) ─────────────────────────────
+  # Runs after cli-release so the draft GitHub release already exists.
+  tauri-release:
+    needs: cli-release
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          - os: macos-latest     # Apple Silicon (arm64)
+          - os: ubuntu-22.04     # Linux amd64
+          - os: windows-latest   # Windows amd64
+    runs-on: ${{ matrix.os }}
+
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-go@v5
+        with:
+          go-version: '1.24'
+
+      - name: Install Linux system dependencies
+        if: runner.os == 'Linux'
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y \
+            libwebkit2gtk-4.1-dev \
+            libappindicator3-dev \
+            librsvg2-dev \
+            patchelf
+
+      - name: Build Go sidecar (Unix)
+        if: runner.os != 'Windows'
+        run: make build-sidecar
+
+      - name: Build Go sidecar (Windows)
+        if: runner.os == 'Windows'
+        shell: pwsh
+        run: |
+          $target = (rustc -vV | Select-String "^host:").ToString().Split(" ")[1].Trim()
+          go build -o prompt-agent.exe ./cmd/prompt-agent
+          New-Item -ItemType Directory -Force -Path src-tauri/binaries | Out-Null
+          Copy-Item prompt-agent.exe "src-tauri/binaries/prompt-agent-cli-$target.exe"
+
+      - uses: tauri-apps/tauri-action@v0
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+          # macOS code signing (optional — remove if not signing)
+          # APPLE_CERTIFICATE: ${{ secrets.APPLE_CERTIFICATE }}
+          # APPLE_CERTIFICATE_PASSWORD: ${{ secrets.APPLE_CERTIFICATE_PASSWORD }}
+          # APPLE_ID: ${{ secrets.APPLE_ID }}
+          # APPLE_ID_PASSWORD: ${{ secrets.APPLE_ID_PASSWORD }}
+          # APPLE_TEAM_ID: ${{ secrets.APPLE_TEAM_ID }}
+        with:
+          tagName: ${{ github.ref_name }}
+          releaseName: Prompt Agent ${{ github.ref_name }}
+          releaseDraft: true
+          prerelease: false
+
+  # ── 3. Publish the draft release after all builds succeed ─────────────────────
+  publish-release:
+    needs: [cli-release, tauri-release]
+    runs-on: ubuntu-latest
+    steps:
+      - name: Publish release
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        run: |
+          gh release edit ${{ github.ref_name }} \
+            --draft=false \
+            --repo ${{ github.repository }}

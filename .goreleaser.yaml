@@ -1,0 +1,58 @@
+version: 2
+project_name: prompt-agent
+
+before:
+  hooks:
+    - go mod tidy
+    - go test ./...
+
+builds:
+  # macOS — CGO required for golang.design/x/hotkey (Carbon API)
+  - id: darwin
+    main: ./cmd/prompt-agent
+    binary: prompt-agent
+    goos: [darwin]
+    goarch: [amd64, arm64]
+    ldflags:
+      - -s -w
+      - -X github.com/meruem/prompt-builder-agent/internal/cli.version={{.Version}}
+
+  # Linux + Windows — pure Go, no CGO needed
+  - id: cross
+    main: ./cmd/prompt-agent
+    binary: prompt-agent
+    goos: [linux, windows]
+    goarch: [amd64, arm64]
+    env:
+      - CGO_ENABLED=0
+    ldflags:
+      - -s -w
+      - -X github.com/meruem/prompt-builder-agent/internal/cli.version={{.Version}}
+
+archives:
+  - formats: [tar.gz]
+    format_overrides:
+      - goos: windows
+        formats: [zip]
+    name_template: "{{ .ProjectName }}_{{ .Version }}_{{ .Os }}_{{ .Arch }}"
+
+checksum:
+  name_template: checksums.txt
+
+release:
+  draft: true   # publish after Tauri bundles are uploaded
+
+brews:
+  - name: prompt-agent
+    repository:
+      owner: "{{ .Env.GITHUB_USERNAME }}"
+      name: homebrew-prompt-agent
+      token: "{{ .Env.HOMEBREW_TAP_GITHUB_TOKEN }}"
+    directory: Formula
+    homepage: "https://github.com/{{ .Env.GITHUB_USERNAME }}/prompt-agent"
+    description: "AI prompt runner with recipe system — one keystroke away"
+    license: MIT
+    install: |
+      bin.install "prompt-agent"
+    test: |
+      system "#{bin}/prompt-agent", "version"

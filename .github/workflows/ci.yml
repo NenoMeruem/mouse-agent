@@ -1,0 +1,62 @@
+name: CI
+
+on:
+  push:
+    branches: [main]
+  pull_request:
+    branches: [main]
+
+jobs:
+  test:
+    runs-on: macos-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-go@v5
+        with:
+          go-version: '1.24'
+          cache: true
+
+      - name: Run tests
+        run: go test ./...
+
+      - name: Vet
+        run: go vet ./...
+
+  build:
+    needs: test
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          - os: macos-latest
+            output: prompt-agent-darwin
+          - os: ubuntu-latest
+            output: prompt-agent-linux
+          - os: windows-latest
+            output: prompt-agent-windows.exe
+    runs-on: ${{ matrix.os }}
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-go@v5
+        with:
+          go-version: '1.24'
+          cache: true
+
+      - name: Build (Unix)
+        if: runner.os != 'Windows'
+        run: go build -o ${{ matrix.output }} ./cmd/prompt-agent
+
+      - name: Build (Windows)
+        if: runner.os == 'Windows'
+        run: go build -o ${{ matrix.output }} ./cmd/prompt-agent
+        env:
+          CGO_ENABLED: '0'
+
+      - name: Upload artifact
+        uses: actions/upload-artifact@v4
+        with:
+          name: ${{ matrix.output }}
+          path: ${{ matrix.output }}
+          retention-days: 7
