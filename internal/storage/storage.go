@@ -4,7 +4,7 @@ package storage
 import (
 	"time"
 
-	"github.com/meruem/prompt-builder-agent/pkg/models"
+	"github.com/meruem/promptly/pkg/models"
 )
 
 // PromptStore defines operations for storing and retrieving prompts.

@@ -8,11 +8,11 @@ import (
 	"strings"
 	"time"
 
-	"github.com/meruem/prompt-builder-agent/internal/config"
-	"github.com/meruem/prompt-builder-agent/internal/llm"
-	"github.com/meruem/prompt-builder-agent/internal/llm/claude"
-	"github.com/meruem/prompt-builder-agent/internal/llm/gemini"
-	"github.com/meruem/prompt-builder-agent/internal/llm/openai"
+	"github.com/meruem/promptly/internal/config"
+	"github.com/meruem/promptly/internal/llm"
+	"github.com/meruem/promptly/internal/llm/claude"
+	"github.com/meruem/promptly/internal/llm/gemini"
+	"github.com/meruem/promptly/internal/llm/openai"
 	"github.com/spf13/cobra"
 )
 

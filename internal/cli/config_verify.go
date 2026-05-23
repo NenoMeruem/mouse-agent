@@ -4,8 +4,8 @@ import (
 	"fmt"
 	"os"
 
-	"github.com/meruem/prompt-builder-agent/internal/config"
-	"github.com/meruem/prompt-builder-agent/internal/llm"
+	"github.com/meruem/promptly/internal/config"
+	"github.com/meruem/promptly/internal/llm"
 	"github.com/spf13/cobra"
 )
 
@@ -30,7 +30,7 @@ var verifyConfigCmd = &cobra.Command{
 		if err != nil {
 			return fmt.Errorf("cannot get home directory: %w", err)
 		}
-		configPath := home + "/.prompt-agent/config.yaml"
+		configPath := home + "/.promptly/config.yaml"
 		fmt.Printf("📁 Config file: %s\n", configPath)
 		if _, err := os.Stat(configPath); err == nil {
 			fmt.Println("   ✅ Config file exists")
@@ -84,7 +84,7 @@ var verifyConfigCmd = &cobra.Command{
 		if len(registered) == 0 {
 			fmt.Println("   ❌ No engines available!")
 			fmt.Println("\n💡 Tips to fix:")
-			fmt.Println("   1. Add API keys to ~/.prompt-agent/config.yaml:")
+			fmt.Println("   1. Add API keys to ~/.promptly/config.yaml:")
 			fmt.Println("      engines:")
 			fmt.Println("        openai:")
 			fmt.Println("          api_key: \"your-key-here\"")

@@ -4,11 +4,11 @@ package app
 import (
 	"fmt"
 
-	"github.com/meruem/prompt-builder-agent/internal/config"
-	"github.com/meruem/prompt-builder-agent/internal/logger"
-	"github.com/meruem/prompt-builder-agent/internal/prompt"
-	"github.com/meruem/prompt-builder-agent/internal/selection"
-	"github.com/meruem/prompt-builder-agent/internal/storage"
+	"github.com/meruem/promptly/internal/config"
+	"github.com/meruem/promptly/internal/logger"
+	"github.com/meruem/promptly/internal/prompt"
+	"github.com/meruem/promptly/internal/selection"
+	"github.com/meruem/promptly/internal/storage"
 )
 
 // AppContext holds the core dependencies needed throughout the application.

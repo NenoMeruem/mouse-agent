@@ -1,10 +1,10 @@
 [package]
-name = "prompt-agent"
+name = "promptly"
 version = "0.1.0"
 edition = "2021"
 
 [[bin]]
-name = "prompt-agent"
+name = "promptly"
 path = "src/main.rs"
 
 [build-dependencies]

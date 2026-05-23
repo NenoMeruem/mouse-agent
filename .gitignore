@@ -1,5 +1,5 @@
 # Ignore build outputs
-prompt-agent
+promptly
 *.exe
 *.dll
 *.so

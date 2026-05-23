@@ -7,8 +7,8 @@ import (
 	"os/exec"
 	"strings"
 
-	"github.com/meruem/prompt-builder-agent/internal/app"
-	"github.com/meruem/prompt-builder-agent/pkg/models"
+	"github.com/meruem/promptly/internal/app"
+	"github.com/meruem/promptly/pkg/models"
 	"github.com/spf13/cobra"
 )
 
@@ -36,7 +36,7 @@ func promptEditCommand(cmd *cobra.Command, args []string) error {
 		return fmt.Errorf("cannot marshal prompt: %w", err)
 	}
 
-	tmpFile, err := os.CreateTemp("", "prompt-agent-edit-*.json")
+	tmpFile, err := os.CreateTemp("", "promptly-edit-*.json")
 	if err != nil {
 		return fmt.Errorf("cannot create temp file: %w", err)
 	}

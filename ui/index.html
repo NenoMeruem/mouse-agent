@@ -3,8 +3,17 @@
 <head>
   <meta charset="UTF-8" />
   <meta name="viewport" content="width=device-width, initial-scale=1.0" />
-  <title>Prompt Agent</title>
+  <title>Promptly</title>
   <link rel="stylesheet" href="style.css" />
+  <!-- Apply theme immediately to prevent flash of wrong color -->
+  <script>
+    (function() {
+      var t = localStorage.getItem('theme') || 'claude';
+      var d = localStorage.getItem('dark') === 'true';
+      document.documentElement.dataset.theme = t;
+      document.documentElement.dataset.dark = d ? 'true' : 'false';
+    })();
+  </script>
 </head>
 <body>
   <div id="app">
@@ -12,7 +21,7 @@
     <!-- ── Header ── -->
     <div id="header" data-tauri-drag-region>
       <div class="header-left">
-        <span class="app-title">AI Prompt Builder</span>
+        <span class="app-title">Promptly</span>
       </div>
       <div class="header-right">
         <button class="hbtn" title="Settings">
@@ -101,6 +110,16 @@
               </div>
             </div>
           </div>
+
+          <!-- Follow-up input — shown after first response -->
+          <div id="followup-bar" class="followup-bar hidden">
+            <textarea id="followup-input" class="followup-input" placeholder="Ask a follow-up…" rows="1"></textarea>
+            <button id="followup-btn" class="followup-btn" title="Send">
+              <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round">
+                <line x1="22" y1="2" x2="11" y2="13"/><polygon points="22 2 15 22 11 13 2 9 22 2"/>
+              </svg>
+            </button>
+          </div>
         </div>
 
         <!-- Form view: Create recipe -->
@@ -166,6 +185,7 @@
           <div class="settings-tabs">
             <button class="settings-tab active" data-tab="engines">Engines</button>
             <button class="settings-tab" data-tab="hotkeys">Hotkeys</button>
+            <button class="settings-tab" data-tab="appearance">Appearance</button>
             <button class="settings-tab" data-tab="about">About</button>
           </div>
 
@@ -240,11 +260,48 @@
             <div id="hotkey-msg" class="settings-msg"></div>
           </div>
 
+          <!-- ── Tab: Appearance ── -->
+          <div id="settings-tab-appearance" class="settings-tab-panel">
+            <p class="settings-desc">Customize how Promptly looks.</p>
+
+            <div class="appearance-section">
+              <div class="appearance-section-label">Color theme</div>
+              <div class="theme-swatches">
+                <div class="theme-swatch-item">
+                  <button class="theme-swatch active" data-theme="claude" title="Claude"></button>
+                  <span>Claude</span>
+                </div>
+                <div class="theme-swatch-item">
+                  <button class="theme-swatch" data-theme="forest" title="Forest"></button>
+                  <span>Forest</span>
+                </div>
+                <div class="theme-swatch-item">
+                  <button class="theme-swatch" data-theme="ocean" title="Ocean"></button>
+                  <span>Ocean</span>
+                </div>
+                <div class="theme-swatch-item">
+                  <button class="theme-swatch" data-theme="lavender" title="Lavender"></button>
+                  <span>Lavender</span>
+                </div>
+              </div>
+            </div>
+
+            <div class="appearance-section">
+              <div class="appearance-section-label">Mode</div>
+              <div class="dark-mode-row">
+                <span class="dark-mode-label">Dark mode</span>
+                <button class="dark-toggle" id="dark-toggle" aria-pressed="false">
+                  <span class="dark-toggle-thumb"></span>
+                </button>
+              </div>
+            </div>
+          </div>
+
           <!-- ── Tab: About ── -->
           <div id="settings-tab-about" class="settings-tab-panel">
             <div class="about-logo">
               <div class="about-icon">✦</div>
-              <div class="about-app-name">Prompt Agent</div>
+              <div class="about-app-name">Promptly</div>
               <div class="about-version" id="about-version">v0.1.0</div>
             </div>
 

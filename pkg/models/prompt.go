@@ -18,6 +18,8 @@ type Prompt struct {
 
 type RunRecord struct {
 	ID          string    `json:"id"`
+	SessionID   string    `json:"session_id"`   // groups all turns of a conversation
+	TurnIndex   int       `json:"turn_index"`   // 0 = initial run, 1,2,3... = follow-ups
 	PromptID    string    `json:"prompt_id"`
 	Engine      string    `json:"engine"`
 	InputText   string    `json:"input_text"`

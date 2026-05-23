@@ -6,12 +6,14 @@ import (
 	"strings"
 	"time"
 
-	"github.com/meruem/prompt-builder-agent/pkg/models"
+	"github.com/meruem/promptly/pkg/models"
 )
 
 const createHistoryTable = `
 CREATE TABLE IF NOT EXISTS run_history (
     id           TEXT PRIMARY KEY,
+    session_id   TEXT DEFAULT '',
+    turn_index   INTEGER DEFAULT 0,
     prompt_id    TEXT NOT NULL,
     engine       TEXT NOT NULL,
     input_text   TEXT DEFAULT '',
@@ -22,7 +24,8 @@ CREATE TABLE IF NOT EXISTS run_history (
     created_at   DATETIME NOT NULL
 );
 
-CREATE INDEX IF NOT EXISTS idx_history_prompt_id ON run_history(prompt_id);
+CREATE INDEX IF NOT EXISTS idx_history_prompt_id  ON run_history(prompt_id);
+CREATE INDEX IF NOT EXISTS idx_history_session_id ON run_history(session_id);
 CREATE INDEX IF NOT EXISTS idx_history_created_at ON run_history(created_at DESC);
 `
 
@@ -37,6 +40,10 @@ func NewSQLiteHistoryStore(db *sql.DB) (*SQLiteHistoryStore, error) {
 	if err := migrateDropHistoryFK(db); err != nil {
 		return nil, fmt.Errorf("cannot migrate history table: %w", err)
 	}
+	// Add session_id / turn_index to existing DBs BEFORE creating indices that reference them.
+	// These are no-ops when the columns already exist or the table doesn't exist yet.
+	db.Exec(`ALTER TABLE run_history ADD COLUMN session_id TEXT DEFAULT ''`)   //nolint:errcheck
+	db.Exec(`ALTER TABLE run_history ADD COLUMN turn_index INTEGER DEFAULT 0`) //nolint:errcheck
 	if _, err := db.Exec(createHistoryTable); err != nil {
 		return nil, fmt.Errorf("cannot create history table: %w", err)
 	}
@@ -115,9 +122,11 @@ func (h *SQLiteHistoryStore) Append(record *models.RunRecord) error {
 
 	_, err := h.db.Exec(
 		`INSERT INTO run_history
-		 (id, prompt_id, engine, input_text, final_prompt, response, duration_ms, error, created_at)
-		 VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)`,
+		 (id, session_id, turn_index, prompt_id, engine, input_text, final_prompt, response, duration_ms, error, created_at)
+		 VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
 		record.ID,
+		record.SessionID,
+		record.TurnIndex,
 		record.PromptID,
 		record.Engine,
 		record.InputText,
@@ -150,14 +159,14 @@ func (h *SQLiteHistoryStore) List(limit int, promptID string) ([]models.RunRecor
 
 	if promptID != "" {
 		rows, err = h.db.Query(
-			`SELECT id, prompt_id, engine, input_text, final_prompt, response, duration_ms, error, created_at
+			`SELECT id, session_id, turn_index, prompt_id, engine, input_text, final_prompt, response, duration_ms, error, created_at
 			 FROM run_history WHERE prompt_id = ?
 			 ORDER BY created_at DESC LIMIT ?`,
 			promptID, sqlLimit,
 		)
 	} else {
 		rows, err = h.db.Query(
-			`SELECT id, prompt_id, engine, input_text, final_prompt, response, duration_ms, error, created_at
+			`SELECT id, session_id, turn_index, prompt_id, engine, input_text, final_prompt, response, duration_ms, error, created_at
 			 FROM run_history ORDER BY created_at DESC LIMIT ?`,
 			sqlLimit,
 		)
@@ -174,7 +183,7 @@ func (h *SQLiteHistoryStore) List(limit int, promptID string) ([]models.RunRecor
 func (h *SQLiteHistoryStore) Search(query string) ([]models.RunRecord, error) {
 	pattern := "%" + query + "%"
 	rows, err := h.db.Query(
-		`SELECT id, prompt_id, engine, input_text, final_prompt, response, duration_ms, error, created_at
+		`SELECT id, session_id, turn_index, prompt_id, engine, input_text, final_prompt, response, duration_ms, error, created_at
 		 FROM run_history
 		 WHERE final_prompt LIKE ? OR response LIKE ?
 		 ORDER BY created_at DESC`,
@@ -216,7 +225,7 @@ func scanRecord(rows *sql.Rows) (*models.RunRecord, error) {
 	var createdStr string
 
 	if err := rows.Scan(
-		&r.ID, &r.PromptID, &r.Engine,
+		&r.ID, &r.SessionID, &r.TurnIndex, &r.PromptID, &r.Engine,
 		&r.InputText, &r.FinalPrompt, &r.Response,
 		&r.DurationMs, &r.Error, &createdStr,
 	); err != nil {

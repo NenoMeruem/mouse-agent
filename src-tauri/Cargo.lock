@@ -2711,7 +2711,7 @@ dependencies = [
 ]
 
 [[package]]
-name = "prompt-agent"
+name = "promptly"
 version = "0.1.0"
 dependencies = [
  "serde",

@@ -13,6 +13,7 @@ var (
 	runLength     string
 	runComplexity string
 	runEngine     string
+	runSessionID  string // conversation session ID (set by Tauri, groups turns in history)
 )
 
 func init() {
@@ -25,6 +26,7 @@ func init() {
 	runCmd.Flags().StringVar(&runLength, "length", "", "Length: short, medium, long")
 	runCmd.Flags().StringVar(&runComplexity, "complexity", "", "Complexity: simple, normal, technical")
 	runCmd.Flags().StringVar(&runEngine, "engine", "", "Override engine (gemini, openai, claude, ...)")
+	runCmd.Flags().StringVar(&runSessionID, "session-id", "", "Conversation session ID (Tauri)")
 }
 
 var runCmd = &cobra.Command{
@@ -33,9 +35,9 @@ var runCmd = &cobra.Command{
 	Long: `Run a prompt with clipboard selection.
 
 Examples:
-  prompt-agent run explain_code              # Get selection from clipboard
-  prompt-agent run code_review --raw         # Raw output without formatting
-  prompt-agent run explain_code --dry-run    # Preview only, no execution`,
+  promptly run explain_code              # Get selection from clipboard
+  promptly run code_review --raw         # Raw output without formatting
+  promptly run explain_code --dry-run    # Preview only, no execution`,
 	Args: cobra.ExactArgs(1),
 	RunE: runPromptCommand,
 }

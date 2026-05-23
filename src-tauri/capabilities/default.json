@@ -1,7 +1,7 @@
 {
   "$schema": "../gen/schemas/desktop-schema.json",
   "identifier": "default",
-  "description": "Default capabilities for Prompt Agent",
+  "description": "Default capabilities for Promptly",
   "windows": ["overlay"],
   "permissions": [
     "core:default",
@@ -11,7 +11,7 @@
       "identifier": "shell:allow-execute",
       "allow": [
         {
-          "name": "binaries/prompt-agent-cli",
+          "name": "binaries/promptly-cli",
           "sidecar": true,
           "args": true
         }

@@ -12,16 +12,16 @@ import (
 	"time"
 
 	"github.com/google/uuid"
-	"github.com/meruem/prompt-builder-agent/internal/app"
-	"github.com/meruem/prompt-builder-agent/internal/config"
-	"github.com/meruem/prompt-builder-agent/internal/llm"
-	"github.com/meruem/prompt-builder-agent/internal/llm/claude"
-	"github.com/meruem/prompt-builder-agent/internal/llm/gemini"
-	"github.com/meruem/prompt-builder-agent/internal/llm/openai"
-	"github.com/meruem/prompt-builder-agent/internal/logger"
-	"github.com/meruem/prompt-builder-agent/internal/output"
-	promptlib "github.com/meruem/prompt-builder-agent/internal/prompt"
-	"github.com/meruem/prompt-builder-agent/pkg/models"
+	"github.com/meruem/promptly/internal/app"
+	"github.com/meruem/promptly/internal/config"
+	"github.com/meruem/promptly/internal/llm"
+	"github.com/meruem/promptly/internal/llm/claude"
+	"github.com/meruem/promptly/internal/llm/gemini"
+	"github.com/meruem/promptly/internal/llm/openai"
+	"github.com/meruem/promptly/internal/logger"
+	"github.com/meruem/promptly/internal/output"
+	promptlib "github.com/meruem/promptly/internal/prompt"
+	"github.com/meruem/promptly/pkg/models"
 	"github.com/spf13/cobra"
 )
 
@@ -134,6 +134,8 @@ func runPromptCommand(cmd *cobra.Command, args []string) error {
 		if app.GlobalContext.HistoryStore != nil {
 			record := &models.RunRecord{
 				ID:          uuid.New().String(),
+				SessionID:   runSessionID,
+				TurnIndex:   0,
 				PromptID:    promptDef.ID,
 				Engine:      engine,
 				InputText:   data["selection"],
@@ -190,11 +192,18 @@ func collectMissingVariables(requiredVars []string, data map[string]string) erro
 	return promptlib.ValidateVariables(requiredVars, data)
 }
 
-// runWithLLM sends the prompt to an LLM engine and renders the streamed response.
-// It handles setting up the correct LLM client, managing context cancellation,
-// and rendering output according to user preferences.
-// Returns the full response text, duration in milliseconds, and any error.
+// runWithLLM is a convenience wrapper that builds a single-turn Request from a prompt string.
 func runWithLLM(prompt, engine string) (string, int64, error) {
+	return runWithLLMRequest(llm.Request{
+		Prompt: prompt,
+		Model:  config.GetEngineModel(engine),
+	}, engine)
+}
+
+// runWithLLMRequest sends a pre-built Request to an LLM engine and renders the streamed response.
+// Supports both single-turn (Prompt field) and multi-turn (Messages field) requests.
+// Returns the full response text, duration in milliseconds, and any error.
+func runWithLLMRequest(req llm.Request, engine string) (string, int64, error) {
 	// Initialize LLM manager and register available engines
 	llmMgr := llm.NewManager()
 	registerAvailableEngines(llmMgr)
@@ -213,10 +222,9 @@ func runWithLLM(prompt, engine string) (string, int64, error) {
 	)
 	defer cancel()
 
-	// Create LLM request
-	req := llm.Request{
-		Prompt: prompt,
-		Model:  config.GetEngineModel(engine),
+	// Ensure model is set
+	if req.Model == "" {
+		req.Model = config.GetEngineModel(engine)
 	}
 
 	// Start streaming from LLM (suppress status line in raw/Tauri mode)

@@ -1,4 +1,4 @@
-module github.com/meruem/prompt-builder-agent
+module github.com/meruem/promptly
 
 go 1.24.2
 

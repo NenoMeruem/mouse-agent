@@ -10,7 +10,7 @@ import (
 	"github.com/charmbracelet/bubbles/viewport"
 	tea "github.com/charmbracelet/bubbletea"
 	"github.com/charmbracelet/lipgloss"
-	"github.com/meruem/prompt-builder-agent/internal/config"
+	"github.com/meruem/promptly/internal/config"
 )
 
 type editorKeyMap struct {

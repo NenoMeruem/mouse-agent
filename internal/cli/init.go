@@ -5,8 +5,8 @@ import (
 	"os"
 	"path/filepath"
 
-	promptlib "github.com/meruem/prompt-builder-agent/internal/prompt"
-	"github.com/meruem/prompt-builder-agent/internal/storage"
+	promptlib "github.com/meruem/promptly/internal/prompt"
+	"github.com/meruem/promptly/internal/storage"
 	"github.com/spf13/cobra"
 )
 
@@ -16,14 +16,14 @@ func init() {
 
 var initCmd = &cobra.Command{
 	Use:   "init",
-	Short: "Initialize prompt-agent config",
+	Short: "Initialize promptly config",
 	RunE: func(cmd *cobra.Command, args []string) error {
 		home, err := os.UserHomeDir()
 		if err != nil {
 			return fmt.Errorf("cannot get home directory: %w", err)
 		}
 
-		dir := filepath.Join(home, ".prompt-agent")
+		dir := filepath.Join(home, ".promptly")
 
 		if err := os.MkdirAll(dir, 0755); err != nil {
 			return err

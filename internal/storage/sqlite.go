@@ -8,7 +8,7 @@ import (
 	"path/filepath"
 	"time"
 
-	"github.com/meruem/prompt-builder-agent/pkg/models"
+	"github.com/meruem/promptly/pkg/models"
 	_ "modernc.org/sqlite"
 )
 
@@ -70,7 +70,7 @@ func (s *SQLiteStore) DB() *sql.DB {
 // GetDefaultDBPath returns the default file path for the SQLite database.
 func GetDefaultDBPath() string {
 	home, _ := os.UserHomeDir()
-	return filepath.Join(home, ".prompt-agent", "prompts.db")
+	return filepath.Join(home, ".promptly", "prompts.db")
 }
 
 // Create inserts a new prompt. Returns an error if the ID already exists.

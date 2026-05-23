@@ -6,7 +6,7 @@ import (
 	"strings"
 	"time"
 
-	"github.com/meruem/prompt-builder-agent/internal/app"
+	"github.com/meruem/promptly/internal/app"
 	"github.com/spf13/cobra"
 )
 

@@ -7,8 +7,8 @@ import (
 	"os/signal"
 	"syscall"
 
-	"github.com/meruem/prompt-builder-agent/internal/app"
-	"github.com/meruem/prompt-builder-agent/internal/trigger"
+	"github.com/meruem/promptly/internal/app"
+	"github.com/meruem/promptly/internal/trigger"
 	"github.com/spf13/cobra"
 )
 
@@ -25,7 +25,7 @@ var daemonCmd = &cobra.Command{
 The daemon listens for system-wide keyboard shortcuts and runs the
 corresponding prompt without needing to open a terminal manually.
 
-Configure hotkeys in ~/.prompt-agent/config.yaml:
+Configure hotkeys in ~/.promptly/config.yaml:
 
   triggers:
     enabled: true
@@ -53,19 +53,19 @@ Linux: writes ~/.xbindkeysrc  (requires: apt install xbindkeys)`,
 
 func runDaemon(_ *cobra.Command, _ []string) error {
 	if app.GlobalContext.Config == nil || !app.GlobalContext.Config.Triggers.Enabled {
-		return fmt.Errorf("triggers not enabled — add to ~/.prompt-agent/config.yaml:\n" +
+		return fmt.Errorf("triggers not enabled — add to ~/.promptly/config.yaml:\n" +
 			"  triggers:\n    enabled: true\n    hotkeys:\n      alt+space: explain_code")
 	}
 
 	hotkeys := app.GlobalContext.Config.Triggers.Hotkeys
 	if len(hotkeys) == 0 {
-		return fmt.Errorf("no hotkeys configured in ~/.prompt-agent/config.yaml")
+		return fmt.Errorf("no hotkeys configured in ~/.promptly/config.yaml")
 	}
 
 	// Resolve binary path so the daemon can launch itself
 	binary, err := os.Executable()
 	if err != nil {
-		binary = "prompt-agent"
+		binary = "promptly"
 	}
 
 	daemon := trigger.NewHotkeyDaemon(binary)
@@ -109,12 +109,12 @@ func runDaemonSetup(_ *cobra.Command, _ []string) error {
 	}
 	hotkeys := app.GlobalContext.Config.Triggers.Hotkeys
 	if len(hotkeys) == 0 {
-		return fmt.Errorf("no hotkeys configured in ~/.prompt-agent/config.yaml")
+		return fmt.Errorf("no hotkeys configured in ~/.promptly/config.yaml")
 	}
 
 	binary, _ := os.Executable()
 	if binary == "" {
-		binary = "prompt-agent"
+		binary = "promptly"
 	}
 
 	return trigger.GenerateExternalConfig(hotkeys, binary)

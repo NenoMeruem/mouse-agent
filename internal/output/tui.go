@@ -9,7 +9,7 @@ import (
 	tea "github.com/charmbracelet/bubbletea"
 	"github.com/charmbracelet/glamour"
 	"github.com/charmbracelet/lipgloss"
-	"github.com/meruem/prompt-builder-agent/internal/llm"
+	"github.com/meruem/promptly/internal/llm"
 )
 
 // TUIRenderer renders streaming output using Bubbletea TUI with markdown support

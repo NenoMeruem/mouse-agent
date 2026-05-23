@@ -3,20 +3,20 @@
 
 # Build Go CLI binary (current platform)
 build:
-	go build -o prompt-agent ./cmd/prompt-agent
+	go build -o promptly ./cmd/promptly
 
 # Build Windows binaries (amd64 + arm64) — cross-compiled from any host
 build-windows:
 	@mkdir -p dist
 	@echo "Building Windows amd64..."
 	GOOS=windows GOARCH=amd64 CGO_ENABLED=0 \
-		go build -ldflags="-s -w" -o dist/prompt-agent-windows-amd64.exe ./cmd/prompt-agent
+		go build -ldflags="-s -w" -o dist/promptly-windows-amd64.exe ./cmd/promptly
 	@echo "Building Windows arm64..."
 	GOOS=windows GOARCH=arm64 CGO_ENABLED=0 \
-		go build -ldflags="-s -w" -o dist/prompt-agent-windows-arm64.exe ./cmd/prompt-agent
+		go build -ldflags="-s -w" -o dist/promptly-windows-arm64.exe ./cmd/promptly
 	@echo ""
-	@echo "✅ dist/prompt-agent-windows-amd64.exe"
-	@echo "✅ dist/prompt-agent-windows-arm64.exe"
+	@echo "✅ dist/promptly-windows-amd64.exe"
+	@echo "✅ dist/promptly-windows-arm64.exe"
 
 # Build for all platforms (macOS + Windows + Linux)
 # Note: macOS uses CGO=1 (required by golang.design/x/hotkey).
@@ -24,13 +24,13 @@ build-windows:
 build-all:
 	@mkdir -p dist
 	@echo "--- macOS (native CGO, current arch only) ---"
-	go build -ldflags="-s -w" -o dist/prompt-agent-darwin-$(shell go env GOARCH) ./cmd/prompt-agent
+	go build -ldflags="-s -w" -o dist/promptly-darwin-$(shell go env GOARCH) ./cmd/promptly
 	@echo "--- Windows ---"
-	GOOS=windows GOARCH=amd64 CGO_ENABLED=0 go build -ldflags="-s -w" -o dist/prompt-agent-windows-amd64.exe ./cmd/prompt-agent
-	GOOS=windows GOARCH=arm64 CGO_ENABLED=0 go build -ldflags="-s -w" -o dist/prompt-agent-windows-arm64.exe ./cmd/prompt-agent
+	GOOS=windows GOARCH=amd64 CGO_ENABLED=0 go build -ldflags="-s -w" -o dist/promptly-windows-amd64.exe ./cmd/promptly
+	GOOS=windows GOARCH=arm64 CGO_ENABLED=0 go build -ldflags="-s -w" -o dist/promptly-windows-arm64.exe ./cmd/promptly
 	@echo "--- Linux ---"
-	GOOS=linux   GOARCH=amd64 CGO_ENABLED=0 go build -ldflags="-s -w" -o dist/prompt-agent-linux-amd64    ./cmd/prompt-agent
-	GOOS=linux   GOARCH=arm64 CGO_ENABLED=0 go build -ldflags="-s -w" -o dist/prompt-agent-linux-arm64    ./cmd/prompt-agent
+	GOOS=linux   GOARCH=amd64 CGO_ENABLED=0 go build -ldflags="-s -w" -o dist/promptly-linux-amd64    ./cmd/promptly
+	GOOS=linux   GOARCH=arm64 CGO_ENABLED=0 go build -ldflags="-s -w" -o dist/promptly-linux-arm64    ./cmd/promptly
 	@echo ""
 	@ls -lh dist/
 
@@ -38,7 +38,7 @@ build-all:
 build-sidecar: build
 	$(eval TARGET := $(shell rustc -vV | grep '^host:' | cut -d' ' -f2))
 	mkdir -p src-tauri/binaries
-	cp prompt-agent src-tauri/binaries/prompt-agent-cli-$(TARGET)
+	cp promptly src-tauri/binaries/promptly-cli-$(TARGET)
 	@echo "Sidecar built for $(TARGET)"
 
 # Run Tauri in dev mode (builds sidecar first)
@@ -50,10 +50,10 @@ release: build-sidecar build-windows
 	@mkdir -p dist
 	cd src-tauri && cargo tauri build
 	@echo ""
-	@echo "✅ App:  src-tauri/target/release/bundle/macos/Prompt Agent.app"
-	@echo "✅ DMG:  src-tauri/target/release/bundle/dmg/Prompt Agent_"*".dmg"
-	@echo "✅ EXE:  dist/prompt-agent-windows-amd64.exe"
-	@echo "✅ EXE:  dist/prompt-agent-windows-arm64.exe"
+	@echo "✅ App:  src-tauri/target/release/bundle/macos/Promptly.app"
+	@echo "✅ DMG:  src-tauri/target/release/bundle/dmg/Promptly_"*".dmg"
+	@echo "✅ EXE:  dist/promptly-windows-amd64.exe"
+	@echo "✅ EXE:  dist/promptly-windows-arm64.exe"
 
 # Run Go tests
 test:
@@ -61,6 +61,6 @@ test:
 
 # Clean build artifacts
 clean:
-	rm -f prompt-agent prompt-agent.exe
-	rm -f src-tauri/binaries/prompt-agent-*
+	rm -f promptly promptly.exe
+	rm -f src-tauri/binaries/promptly-*
 	rm -rf dist/

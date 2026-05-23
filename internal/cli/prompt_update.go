@@ -4,8 +4,8 @@ import (
 	"fmt"
 	"strings"
 
-	"github.com/meruem/prompt-builder-agent/internal/app"
-	promptlib "github.com/meruem/prompt-builder-agent/internal/prompt"
+	"github.com/meruem/promptly/internal/app"
+	promptlib "github.com/meruem/promptly/internal/prompt"
 	"github.com/spf13/cobra"
 )
 

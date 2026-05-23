@@ -1,7 +1,7 @@
 package output
 
 import (
-	"github.com/meruem/prompt-builder-agent/internal/llm"
+	"github.com/meruem/promptly/internal/llm"
 )
 
 // Renderer interface for streaming output

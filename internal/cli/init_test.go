@@ -10,7 +10,7 @@ import (
 // the config file and the SQLite store with default recipes.
 // We override $HOME with a temporary directory so the test is hermetic.
 func TestInitCommandCreatesFiles(t *testing.T) {
-	tmp, err := os.MkdirTemp("", "prompt-agent-test")
+	tmp, err := os.MkdirTemp("", "promptly-test")
 	if err != nil {
 		t.Fatalf("cannot create temp dir: %v", err)
 	}
@@ -25,7 +25,7 @@ func TestInitCommandCreatesFiles(t *testing.T) {
 		t.Fatalf("initCmd failed: %v", err)
 	}
 
-	dir := pathfile.Join(tmp, ".prompt-agent")
+	dir := pathfile.Join(tmp, ".promptly")
 	configPath := pathfile.Join(dir, "config.yaml")
 	if _, err := os.Stat(configPath); err != nil {
 		t.Fatalf("config.yaml not created: %v", err)

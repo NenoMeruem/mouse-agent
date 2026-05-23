@@ -5,17 +5,17 @@ import (
 	"fmt"
 	"os"
 
-	"github.com/meruem/prompt-builder-agent/internal/app"
-	"github.com/meruem/prompt-builder-agent/internal/config"
-	"github.com/meruem/prompt-builder-agent/internal/logger"
+	"github.com/meruem/promptly/internal/app"
+	"github.com/meruem/promptly/internal/config"
+	"github.com/meruem/promptly/internal/logger"
 	"github.com/spf13/cobra"
 )
 
 var rootCmd = &cobra.Command{
-	Use:   "prompt-agent",
-	Short: "Prompt Agent - build & run AI prompts fast",
+	Use:   "promptly",
+	Short: "Promptly - build & run AI prompts fast",
 	Long: `A CLI tool for quickly building and running AI prompts with support for
-multiple LLM backends (OpenAI, Google Gemini) and reusable templates.`,
+multiple LLM backends (OpenAI, Google Gemini, Claude) and reusable templates.`,
 	PersistentPreRunE: func(cmd *cobra.Command, args []string) error {
 		// Init file logger — non-fatal if directory is unwritable.
 		if err := logger.Init(logger.DefaultLogDir()); err != nil {

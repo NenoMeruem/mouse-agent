@@ -1,5 +1,5 @@
 // Package logger provides file-based structured logging for prompt-agent.
-// Logs are written to ~/.prompt-agent/prompt-agent.log using log/slog.
+// Logs are written to ~/.promptly/promptly.log using log/slog.
 package logger
 
 import (
@@ -10,7 +10,7 @@ import (
 
 var l *slog.Logger
 
-// Init opens (or creates) the log file at <dir>/prompt-agent.log and
+// Init opens (or creates) the log file at <dir>/promptly.log and
 // configures the global logger. Safe to call multiple times; subsequent
 // calls are no-ops. Returns an error only if the file cannot be opened.
 func Init(dir string) error {
@@ -22,7 +22,7 @@ func Init(dir string) error {
 		return err
 	}
 
-	logPath := filepath.Join(dir, "prompt-agent.log")
+	logPath := filepath.Join(dir, "promptly.log")
 	f, err := os.OpenFile(logPath, os.O_APPEND|os.O_CREATE|os.O_WRONLY, 0644)
 	if err != nil {
 		return err
@@ -34,11 +34,11 @@ func Init(dir string) error {
 	return nil
 }
 
-// DefaultLogDir returns ~/.prompt-agent so callers don't need to
+// DefaultLogDir returns ~/.promptly so callers don't need to
 // duplicate the path logic.
 func DefaultLogDir() string {
 	home, _ := os.UserHomeDir()
-	return filepath.Join(home, ".prompt-agent")
+	return filepath.Join(home, ".promptly")
 }
 
 func Info(msg string, args ...any) {

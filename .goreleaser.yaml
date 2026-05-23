@@ -1,5 +1,5 @@
 version: 2
-project_name: prompt-agent
+project_name: promptly
 
 before:
   hooks:
@@ -9,8 +9,8 @@ before:
 builds:
   # macOS — CGO required for golang.design/x/hotkey (Carbon API)
   - id: darwin
-    main: ./cmd/prompt-agent
-    binary: prompt-agent
+    main: ./cmd/promptly
+    binary: promptly
     goos: [darwin]
     goarch: [amd64, arm64]
     ldflags:
@@ -19,8 +19,8 @@ builds:
 
   # Linux + Windows — pure Go, no CGO needed
   - id: cross
-    main: ./cmd/prompt-agent
-    binary: prompt-agent
+    main: ./cmd/promptly
+    binary: promptly
     goos: [linux, windows]
     goarch: [amd64, arm64]
     env:
@@ -43,16 +43,16 @@ release:
   draft: true   # publish after Tauri bundles are uploaded
 
 brews:
-  - name: prompt-agent
+  - name: promptly
     repository:
       owner: "{{ .Env.GITHUB_USERNAME }}"
-      name: homebrew-prompt-agent
+      name: homebrew-promptly
       token: "{{ .Env.HOMEBREW_TAP_GITHUB_TOKEN }}"
     directory: Formula
-    homepage: "https://github.com/{{ .Env.GITHUB_USERNAME }}/prompt-agent"
+    homepage: "https://github.com/{{ .Env.GITHUB_USERNAME }}/promptly"
     description: "AI prompt runner with recipe system — one keystroke away"
     license: MIT
     install: |
-      bin.install "prompt-agent"
+      bin.install "promptly"
     test: |
-      system "#{bin}/prompt-agent", "version"
+      system "#{bin}/promptly", "version"

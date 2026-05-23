@@ -8,7 +8,7 @@ import (
 	"testing"
 	"time"
 
-	"github.com/meruem/prompt-builder-agent/pkg/models"
+	"github.com/meruem/promptly/pkg/models"
 )
 
 // newTestSQLiteStore creates a temporary SQLiteStore for testing.

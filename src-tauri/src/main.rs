@@ -18,6 +18,7 @@ async fn run_recipe(
     tone: String,
     length: String,
     complexity: String,
+    session_id: String,
 ) -> Result<(), String> {
     let mut args = vec![
         "run".to_string(),
@@ -41,10 +42,14 @@ async fn run_recipe(
         args.push("--complexity".to_string());
         args.push(complexity);
     }
+    if !session_id.is_empty() {
+        args.push("--session-id".to_string());
+        args.push(session_id);
+    }
 
     let sidecar = app
         .shell()
-        .sidecar("prompt-agent-cli")
+        .sidecar("promptly-cli")
         .map_err(|e| e.to_string())?
         .args(&args);
 
@@ -85,7 +90,7 @@ async fn run_recipe(
 async fn list_recipes(app: AppHandle) -> Result<String, String> {
     let output = app
         .shell()
-        .sidecar("prompt-agent-cli")
+        .sidecar("promptly-cli")
         .map_err(|e| e.to_string())?
         .args(["prompt", "list", "--output", "json"])
         .output()
@@ -93,6 +98,62 @@ async fn list_recipes(app: AppHandle) -> Result<String, String> {
         .map_err(|e| e.to_string())?;
 
     Ok(String::from_utf8_lossy(&output.stdout).to_string())
+}
+
+/// Continue a conversation: send full message history to LLM and stream response.
+/// `messages` is a JSON string: [{"role":"user"|"assistant","content":"..."}]
+#[tauri::command]
+async fn send_chat(
+    app: AppHandle,
+    messages: String,
+    engine: String,
+    session_id: String,
+    turn_index: u32,
+    prompt_id: String,
+) -> Result<(), String> {
+    let turn_str = turn_index.to_string();
+    let args = vec![
+        "chat",
+        "--engine", &engine,
+        "--messages", &messages,
+        "--raw",
+        "--session-id", &session_id,
+        "--turn-index", &turn_str,
+        "--prompt-id", &prompt_id,
+    ];
+    // filter out empty optional args
+    let _ = args.iter(); // keep compiler happy
+
+    let (mut rx, _child) = app
+        .shell()
+        .sidecar("promptly-cli")
+        .map_err(|e| e.to_string())?
+        .args(&args)
+        .spawn()
+        .map_err(|e| e.to_string())?;
+
+    let app_clone = app.clone();
+    tauri::async_runtime::spawn(async move {
+        while let Some(event) = rx.recv().await {
+            match event {
+                CommandEvent::Stdout(line) => {
+                    let text = String::from_utf8_lossy(&line).to_string();
+                    app_clone.emit("chunk", text).ok();
+                }
+                CommandEvent::Stderr(line) => {
+                    let text = String::from_utf8_lossy(&line).to_string();
+                    app_clone.emit("error", text).ok();
+                }
+                CommandEvent::Terminated(_) => {
+                    app_clone.emit("done", ()).ok();
+                    break;
+                }
+                _ => {}
+            }
+        }
+    });
+
+    Ok(())
 }
 
 /// Read clipboard text — called by JS on startup to pre-populate selection
@@ -147,7 +208,7 @@ async fn save_recipe(
 
     let output = app
         .shell()
-        .sidecar("prompt-agent-cli")
+        .sidecar("promptly-cli")
         .map_err(|e| e.to_string())?
         .args(&args)
         .output()
@@ -169,7 +230,7 @@ async fn reorder_recipes(app: AppHandle, ids: Vec<String>) -> Result<String, Str
 
     let output = app
         .shell()
-        .sidecar("prompt-agent-cli")
+        .sidecar("promptly-cli")
         .map_err(|e| e.to_string())?
         .args(&args)
         .output()
@@ -188,7 +249,7 @@ async fn reorder_recipes(app: AppHandle, ids: Vec<String>) -> Result<String, Str
 async fn delete_recipe(app: AppHandle, id: String) -> Result<String, String> {
     let output = app
         .shell()
-        .sidecar("prompt-agent-cli")
+        .sidecar("promptly-cli")
         .map_err(|e| e.to_string())?
         .args(["prompt", "delete", &id, "--yes"])
         .output()
@@ -207,7 +268,7 @@ async fn delete_recipe(app: AppHandle, id: String) -> Result<String, String> {
 async fn get_engine_configs(app: AppHandle) -> Result<String, String> {
     let output = app
         .shell()
-        .sidecar("prompt-agent-cli")
+        .sidecar("promptly-cli")
         .map_err(|e| e.to_string())?
         .args(["config", "get-engines"])
         .output()
@@ -234,7 +295,7 @@ async fn save_engine_config(
 
     let output = app
         .shell()
-        .sidecar("prompt-agent-cli")
+        .sidecar("promptly-cli")
         .map_err(|e| e.to_string())?
         .args(&args)
         .output()
@@ -253,7 +314,7 @@ async fn save_engine_config(
 async fn delete_engine_config(app: AppHandle, engine: String) -> Result<String, String> {
     let output = app
         .shell()
-        .sidecar("prompt-agent-cli")
+        .sidecar("promptly-cli")
         .map_err(|e| e.to_string())?
         .args(["config", "delete-engine", &engine])
         .output()
@@ -272,7 +333,7 @@ async fn delete_engine_config(app: AppHandle, engine: String) -> Result<String, 
 async fn ping_engine(app: AppHandle, engine: String) -> Result<String, String> {
     let output = app
         .shell()
-        .sidecar("prompt-agent-cli")
+        .sidecar("promptly-cli")
         .map_err(|e| e.to_string())?
         .args(["config", "ping-engine", &engine])
         .output()
@@ -287,7 +348,7 @@ async fn ping_engine(app: AppHandle, engine: String) -> Result<String, String> {
 async fn list_history(app: AppHandle) -> Result<String, String> {
     let output = app
         .shell()
-        .sidecar("prompt-agent-cli")
+        .sidecar("promptly-cli")
         .map_err(|e| e.to_string())?
         .args(["history", "--limit", "50", "--output-json"])
         .output()
@@ -306,7 +367,7 @@ async fn list_history(app: AppHandle) -> Result<String, String> {
 async fn clear_history(app: AppHandle) -> Result<String, String> {
     let output = app
         .shell()
-        .sidecar("prompt-agent-cli")
+        .sidecar("promptly-cli")
         .map_err(|e| e.to_string())?
         .args(["history", "clear", "--all"])
         .output()
@@ -342,7 +403,7 @@ async fn update_recipe(
 
     let output = app
         .shell()
-        .sidecar("prompt-agent-cli")
+        .sidecar("promptly-cli")
         .map_err(|e| e.to_string())?
         .args(&args)
         .output()
@@ -361,7 +422,7 @@ async fn update_recipe(
 async fn get_hotkey(app: AppHandle) -> String {
     match app
         .shell()
-        .sidecar("prompt-agent-cli")
+        .sidecar("promptly-cli")
         .unwrap()
         .args(["config", "get-hotkey"])
         .output()
@@ -382,7 +443,7 @@ async fn set_hotkey(app: AppHandle, hotkey: String) -> Result<(), String> {
 
     // Persist via Go CLI
     app.shell()
-        .sidecar("prompt-agent-cli")
+        .sidecar("promptly-cli")
         .map_err(|e| e.to_string())?
         .args(["config", "set-hotkey", &hotkey])
         .output()
@@ -441,7 +502,7 @@ fn main() {
                 use tauri_plugin_global_shortcut::GlobalShortcutExt;
                 if let Ok(output) = app_handle
                     .shell()
-                    .sidecar("prompt-agent-cli")
+                    .sidecar("promptly-cli")
                     .unwrap()
                     .args(["config", "get-hotkey"])
                     .output()
@@ -468,7 +529,7 @@ fn main() {
             // System tray
             use tauri::tray::{TrayIconBuilder, TrayIconEvent};
             TrayIconBuilder::new()
-                .tooltip("Prompt Agent")
+                .tooltip("Promptly")
                 .on_tray_icon_event(|tray, event| {
                     if let TrayIconEvent::Click { .. } = event {
                         let app = tray.app_handle();
@@ -499,7 +560,7 @@ fn main() {
                 }
             }
         })
-        .invoke_handler(tauri::generate_handler![run_recipe, list_recipes, hide_window, get_clipboard, save_recipe, update_recipe, delete_recipe, reorder_recipes, get_engine_configs, save_engine_config, delete_engine_config, ping_engine, list_history, clear_history, get_hotkey, set_hotkey])
+        .invoke_handler(tauri::generate_handler![run_recipe, send_chat, list_recipes, hide_window, get_clipboard, save_recipe, update_recipe, delete_recipe, reorder_recipes, get_engine_configs, save_engine_config, delete_engine_config, ping_engine, list_history, clear_history, get_hotkey, set_hotkey])
         .run(tauri::generate_context!())
         .expect("error while running tauri application");
 }

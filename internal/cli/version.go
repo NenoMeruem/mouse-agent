@@ -16,6 +16,6 @@ var versionCmd = &cobra.Command{
 	Use:   "version",
 	Short: "Show version",
 	Run: func(cmd *cobra.Command, args []string) {
-		fmt.Println("prompt-agent version", version)
+		fmt.Println("promptly version", version)
 	},
 }

@@ -7,7 +7,7 @@ import (
 	"time"
 
 	"github.com/google/generative-ai-go/genai"
-	"github.com/meruem/prompt-builder-agent/internal/llm"
+	"github.com/meruem/promptly/internal/llm"
 	"google.golang.org/api/iterator"
 	"google.golang.org/api/option"
 )
@@ -47,7 +47,8 @@ func (c *Client) Stream(ctx context.Context, req llm.Request) (<-chan llm.Chunk,
 	return ch, nil
 }
 
-// stream handles the Gemini API call with real streaming via GenerateContentStream.
+// stream handles the Gemini API call with real streaming.
+// Uses StartChat for multi-turn conversations, GenerateContentStream for single-turn.
 func (c *Client) stream(ctx context.Context, req llm.Request, ch chan<- llm.Chunk) {
 	gc, err := genai.NewClient(ctx, option.WithAPIKey(c.apiKey))
 	if err != nil {
@@ -61,7 +62,28 @@ func (c *Client) stream(ctx context.Context, req llm.Request, ch chan<- llm.Chun
 	timeoutCtx, cancel := context.WithTimeout(ctx, c.timeout)
 	defer cancel()
 
-	iter := model.GenerateContentStream(timeoutCtx, genai.Text(req.Prompt))
+	var iter *genai.GenerateContentResponseIterator
+
+	if len(req.Messages) > 0 {
+		// Multi-turn: build chat history from all but the last message
+		cs := model.StartChat()
+		for i := 0; i < len(req.Messages)-1; i++ {
+			m := req.Messages[i]
+			role := m.Role
+			if role == "assistant" {
+				role = "model" // Gemini uses "model" not "assistant"
+			}
+			cs.History = append(cs.History, &genai.Content{
+				Role:  role,
+				Parts: []genai.Part{genai.Text(m.Content)},
+			})
+		}
+		last := req.Messages[len(req.Messages)-1]
+		iter = cs.SendMessageStream(timeoutCtx, genai.Text(last.Content))
+	} else {
+		iter = model.GenerateContentStream(timeoutCtx, genai.Text(req.Prompt))
+	}
+
 	for {
 		resp, err := iter.Next()
 		if err != nil {

@@ -1,7 +1,7 @@
 {
-  "productName": "Prompt Agent",
+  "productName": "Promptly",
   "version": "0.1.0",
-  "identifier": "com.prompt-agent.app",
+  "identifier": "com.promptly.app",
   "build": {
     "frontendDist": "../ui"
   },
@@ -9,13 +9,13 @@
     "active": true,
     "targets": "all",
     "icon": [],
-    "externalBin": ["binaries/prompt-agent-cli"]
+    "externalBin": ["binaries/promptly-cli"]
   },
   "app": {
     "windows": [
       {
         "label": "overlay",
-        "title": "Prompt Agent",
+        "title": "Promptly",
         "width": 780,
         "height": 600,
         "resizable": false,

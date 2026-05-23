@@ -5,7 +5,7 @@ import (
 	"fmt"
 	"text/tabwriter"
 
-	"github.com/meruem/prompt-builder-agent/internal/app"
+	"github.com/meruem/promptly/internal/app"
 	"github.com/spf13/cobra"
 )
 
@@ -32,7 +32,7 @@ var promptListCmd = &cobra.Command{
 		}
 
 		if len(prompts) == 0 {
-			fmt.Println("No prompts found. Create one with 'prompt-agent prompt add'")
+			fmt.Println("No prompts found. Create one with 'promptly prompt add'")
 			return nil
 		}
 

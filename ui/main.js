@@ -438,6 +438,22 @@ function updateRunState() {
   runBtn.disabled = !activeRecipe || !inputArea.value.trim();
 }
 
+// ── Conversation state (declared early — used in Tauri event listeners below) ──
+let conversationHistory = [];
+let conversationEngine  = '';
+let conversationSessionId = '';
+let conversationTurnIndex = 0;   // 0 = initial run, 1,2,3... = follow-ups
+let conversationPromptId  = '';
+
+const followupBar   = document.getElementById('followup-bar');
+const followupInput = document.getElementById('followup-input');
+const followupBtn   = document.getElementById('followup-btn');
+
+function setFollowupLoading(loading) {
+  if (followupInput) followupInput.disabled = loading;
+  if (followupBtn)   followupBtn.disabled   = loading;
+}
+
 // ── Tauri events ──────────────────────────────────────────────────────────────
 await listen('selection', ({ payload }) => {
   currentSelection = payload || '';
@@ -472,6 +488,7 @@ await listen('error', ({ payload }) => {
 
 await listen('done', () => {
   setRunLoading(false);
+  setFollowupLoading(false);
   const thinking = outputEl.querySelector('.output-thinking');
   if (thinking) thinking.remove();
   const trimmed = aiResponseText.trim();
@@ -489,6 +506,16 @@ await listen('done', () => {
       badge.textContent = 'Done';
       bodyEl.appendChild(badge);
     }
+    // Save AI response to conversation history and show follow-up input
+    if (conversationEngine) {
+      // For turn 0 (initial recipe), seed history with the user's input text
+      if (conversationHistory.length === 0) {
+        conversationHistory.push({ role: 'user', content: currentSelection || inputArea.value.trim() });
+      }
+      conversationHistory.push({ role: 'assistant', content: trimmed });
+      followupBar.classList.remove('hidden');
+      followupInput.focus();
+    }
   }
 });
 
@@ -505,6 +532,26 @@ function setRunLoading(loading) {
   runBtn.classList.toggle('loading', loading);
   sendIcon.style.display = loading ? 'none' : '';
   loadIcon.style.display = loading ? 'flex' : 'none';
+}
+
+// Append a streaming turn into the output element.
+// Returns a reference to the new body div for chunk appending.
+function appendTurnStart(engine) {
+  const bodyEl = document.getElementById('output-body');
+  if (bodyEl) {
+    const hr = document.createElement('hr');
+    hr.className = 'chat-divider';
+    bodyEl.appendChild(hr);
+  }
+  const thinking = document.createElement('div');
+  thinking.className = 'output-thinking';
+  thinking.innerHTML = `<span class="output-engine-dot"></span>Thinking with <strong>${engine}</strong>…`;
+  outputEl.appendChild(thinking);
+  const newBody = document.createElement('div');
+  newBody.className = 'output-body';
+  newBody.id = 'output-body';
+  outputEl.appendChild(newBody);
+  return { thinking, newBody };
 }
 
 runBtn.addEventListener('click', async () => {
@@ -525,14 +572,20 @@ runBtn.addEventListener('click', async () => {
     return;
   }
 
+  // Reset conversation for a new recipe run
+  conversationHistory   = [];
+  conversationEngine    = engine;
+  conversationSessionId = crypto.randomUUID();
+  conversationTurnIndex = 0;
+  conversationPromptId  = activeRecipe.id;
   aiResponseText = '';
   showView('output');
   outputEl.innerHTML = '';
   copyWrapEl.style.display = 'none';
   copyFmtMenu.classList.add('hidden');
+  followupBar.classList.add('hidden');
   setRunLoading(true);
   outputEl.innerHTML = `<div class="output-thinking"><span class="output-engine-dot"></span>Thinking with <strong>${engine}</strong>…</div><div class="output-body" id="output-body"></div>`;
-  const bodyEl = document.getElementById('output-body');
 
   try {
     const recipeParams = activeRecipe.params || [];
@@ -543,6 +596,7 @@ runBtn.addEventListener('click', async () => {
       tone:       recipeParams.includes('tone')       ? paramValues.tone       : '',
       length:     recipeParams.includes('length')     ? paramValues.length     : '',
       complexity: recipeParams.includes('complexity') ? paramValues.complexity : '',
+      sessionId:  conversationSessionId,
     });
   } catch (err) {
     const errEl = document.createElement('div');
@@ -554,7 +608,82 @@ runBtn.addEventListener('click', async () => {
   }
 });
 
+// Send follow-up message
+async function sendFollowup() {
+  const text = followupInput.value.trim();
+  if (!text || conversationEngine === '') return;
+
+  // Append user turn to history and display it
+  conversationHistory.push({ role: 'user', content: text });
+  followupInput.value = '';
+
+  const bodyEl = document.getElementById('output-body');
+  if (bodyEl) {
+    const hr = document.createElement('hr');
+    hr.className = 'chat-divider';
+    bodyEl.appendChild(hr);
+    const bubble = document.createElement('div');
+    bubble.className = 'chat-user-bubble';
+    bubble.textContent = text;
+    bodyEl.appendChild(bubble);
+  }
+
+  followupBar.classList.add('hidden');
+  setFollowupLoading(true);
+  aiResponseText = '';
+
+  // Append thinking indicator + new body
+  const thinking = document.createElement('div');
+  thinking.className = 'output-thinking';
+  thinking.innerHTML = `<span class="output-engine-dot"></span>Thinking with <strong>${conversationEngine}</strong>…`;
+  outputEl.appendChild(thinking);
+  const newBody = document.createElement('div');
+  newBody.className = 'output-body';
+  newBody.id = 'output-body';
+  outputEl.appendChild(newBody);
+  outputEl.parentElement.scrollTop = outputEl.parentElement.scrollHeight;
+
+  conversationTurnIndex += 1;
+
+  try {
+    await invoke('send_chat', {
+      messages:   JSON.stringify(conversationHistory),
+      engine:     conversationEngine,
+      sessionId:  conversationSessionId,
+      turnIndex:  conversationTurnIndex,
+      promptId:   conversationPromptId,
+    });
+  } catch (err) {
+    thinking.remove();
+    const errEl = document.createElement('div');
+    errEl.className = 'output-error';
+    errEl.textContent = String(err);
+    newBody.appendChild(errEl);
+    setFollowupLoading(false);
+    followupBar.classList.remove('hidden');
+  }
+}
+
+followupBtn.addEventListener('click', sendFollowup);
+followupInput.addEventListener('keydown', e => {
+  if (e.key === 'Enter' && !e.shiftKey) {
+    e.preventDefault();
+    sendFollowup();
+  }
+});
+// Auto-resize textarea
+followupInput.addEventListener('input', () => {
+  followupInput.style.height = 'auto';
+  followupInput.style.height = Math.min(followupInput.scrollHeight, 80) + 'px';
+});
+
 backBtn.addEventListener('click', () => {
+  conversationHistory   = [];
+  conversationEngine    = '';
+  conversationSessionId = '';
+  conversationTurnIndex = 0;
+  conversationPromptId  = '';
+  followupBar.classList.add('hidden');
   showView('input');
   updateRunState();
 });
@@ -945,6 +1074,34 @@ document.addEventListener('keydown', async (e) => {
   }
 });
 
+// ── Appearance / Theme ────────────────────────────────────────────────────────
+function applyTheme(name) {
+  document.documentElement.dataset.theme = name;
+  document.querySelectorAll('.theme-swatch').forEach(s => {
+    s.classList.toggle('active', s.dataset.theme === name);
+  });
+  localStorage.setItem('theme', name);
+}
+
+function applyDark(dark) {
+  document.documentElement.dataset.dark = dark ? 'true' : 'false';
+  const btn = document.getElementById('dark-toggle');
+  if (btn) btn.setAttribute('aria-pressed', dark ? 'true' : 'false');
+  localStorage.setItem('dark', dark ? 'true' : 'false');
+}
+
+document.querySelectorAll('.theme-swatch').forEach(btn => {
+  btn.addEventListener('click', () => applyTheme(btn.dataset.theme));
+});
+
+document.getElementById('dark-toggle').addEventListener('click', () => {
+  applyDark(document.documentElement.dataset.dark !== 'true');
+});
+
+// Sync toggle state with what the inline script already applied at load time
+applyDark(localStorage.getItem('dark') === 'true');
+applyTheme(localStorage.getItem('theme') || 'claude');
+
 // ── Settings tabs ─────────────────────────────────────────────────────────────
 function switchSettingsTab(tabName) {
   document.querySelectorAll('.settings-tab').forEach(btn => {
@@ -989,6 +1146,44 @@ function formatTimeAgo(dateStr) {
   return `${Math.floor(hrs / 24)}d ago`;
 }
 
+function buildHistoryTurnEl(r, label) {
+  const responseText = (r.response     || '').trim();
+  const finalPrompt  = (r.final_prompt || '').trim();
+  const preview = responseText.slice(0, 100).replace(/\n+/g, ' ') || '(no response)';
+  const el = document.createElement('div');
+  el.className = 'history-item';
+  el.innerHTML = `
+    <div class="history-item-header">
+      <span class="history-recipe">${r.prompt_id || '—'}</span>
+      ${label ? `<span class="history-turn-badge">${label}</span>` : ''}
+      <span class="history-engine">${r.engine || ''}</span>
+      <span class="history-time">${formatTimeAgo(r.created_at)}</span>
+    </div>
+    <div class="history-preview">${escapeHtml(preview)}</div>
+    <div class="history-detail">
+      ${finalPrompt ? `<div class="history-input-label">Prompt sent</div><div class="history-input-text">${escapeHtml(finalPrompt)}</div>` : ''}
+      <div class="history-response-header">
+        <span class="history-response-label">Response</span>
+        ${responseText ? `<button class="history-copy-btn" title="Copy response">Copy</button>` : ''}
+      </div>
+      <div class="history-response-text">${responseText ? renderMarkdown(responseText) : '<em>(empty)</em>'}</div>
+    </div>
+  `;
+  el.addEventListener('click', (e) => {
+    if (!e.target.closest('.history-copy-btn')) el.classList.toggle('expanded');
+  });
+  if (responseText) {
+    el.querySelector('.history-copy-btn').addEventListener('click', async (e) => {
+      e.stopPropagation();
+      await writeToClipboard(responseText);
+      const btn = e.currentTarget;
+      btn.textContent = '✓ Copied';
+      setTimeout(() => { btn.textContent = 'Copy'; }, 1800);
+    });
+  }
+  return el;
+}
+
 async function loadHistory() {
   historyListEl.innerHTML = '<p class="history-empty">Loading…</p>';
   try {
@@ -999,41 +1194,76 @@ async function loadHistory() {
       return;
     }
     historyListEl.innerHTML = '';
+
+    // Group records by session_id; records without a session go solo
+    const sessions = new Map();    // session_id → [records sorted by turn_index]
+    const solo     = [];           // records with no session_id
+
     for (const r of records) {
-      const item = document.createElement('div');
-      item.className = 'history-item';
-      const responseText  = (r.response     || '').trim();
-      const finalPrompt   = (r.final_prompt || '').trim();
-      const preview = responseText.slice(0, 100).replace(/\n+/g, ' ') || '(no response)';
-      item.innerHTML = `
-        <div class="history-item-header">
-          <span class="history-recipe">${r.prompt_id || '—'}</span>
-          <span class="history-engine">${r.engine || ''}</span>
-          <span class="history-time">${formatTimeAgo(r.created_at)}</span>
-        </div>
-        <div class="history-preview">${escapeHtml(preview)}</div>
-        <div class="history-detail">
-          ${finalPrompt ? `<div class="history-input-label">Prompt sent</div><div class="history-input-text">${escapeHtml(finalPrompt)}</div>` : ''}
-          <div class="history-response-header">
-            <span class="history-response-label">Response</span>
-            ${responseText ? `<button class="history-copy-btn" title="Copy response">Copy</button>` : ''}
-          </div>
-          <div class="history-response-text">${responseText ? renderMarkdown(responseText) : '<em>(empty)</em>'}</div>
-        </div>
-      `;
-      item.addEventListener('click', (e) => {
-        if (!e.target.closest('.history-copy-btn')) item.classList.toggle('expanded');
-      });
-      if (responseText) {
-        item.querySelector('.history-copy-btn').addEventListener('click', async (e) => {
-          e.stopPropagation();
-          await writeToClipboard(responseText);
-          const btn = e.currentTarget;
-          btn.textContent = '✓ Copied';
-          setTimeout(() => { btn.textContent = 'Copy'; }, 1800);
-        });
+      const sid = r.session_id || '';
+      if (!sid) { solo.push(r); continue; }
+      if (!sessions.has(sid)) sessions.set(sid, []);
+      sessions.get(sid).push(r);
+    }
+
+    // Sort each session's turns by turn_index ascending
+    for (const turns of sessions.values()) {
+      turns.sort((a, b) => (a.turn_index || 0) - (b.turn_index || 0));
+    }
+
+    // Render sessions (newest first — records are already ordered by created_at DESC from API)
+    // Collect all groups ordered by the created_at of their first record in the raw list
+    const seenSessions = new Set();
+    for (const r of records) {
+      const sid = r.session_id || '';
+
+      if (!sid) {
+        // Solo record
+        historyListEl.appendChild(buildHistoryTurnEl(r, null));
+        continue;
       }
-      historyListEl.appendChild(item);
+
+      if (seenSessions.has(sid)) continue;
+      seenSessions.add(sid);
+
+      const turns = sessions.get(sid);
+      if (turns.length === 1) {
+        // Single-turn session — render like a solo item
+        historyListEl.appendChild(buildHistoryTurnEl(turns[0], null));
+        continue;
+      }
+
+      // Multi-turn session — render as a collapsible thread
+      const thread = document.createElement('div');
+      thread.className = 'history-thread';
+
+      const threadHeader = document.createElement('div');
+      threadHeader.className = 'history-thread-header';
+      threadHeader.innerHTML = `
+        <span class="history-thread-icon">💬</span>
+        <span class="history-thread-label">${turns[0].prompt_id || 'Conversation'}</span>
+        <span class="history-thread-count">${turns.length} turns</span>
+        <span class="history-thread-time">${formatTimeAgo(turns[0].created_at)}</span>
+        <span class="history-thread-caret">›</span>
+      `;
+
+      const threadBody = document.createElement('div');
+      threadBody.className = 'history-thread-body';
+
+      for (const turn of turns) {
+        const label = turn.turn_index === 0 ? 'Initial' : `Follow-up ${turn.turn_index}`;
+        const turnEl = buildHistoryTurnEl(turn, label);
+        turnEl.classList.add('history-thread-turn');
+        threadBody.appendChild(turnEl);
+      }
+
+      threadHeader.addEventListener('click', () => {
+        thread.classList.toggle('expanded');
+      });
+
+      thread.appendChild(threadHeader);
+      thread.appendChild(threadBody);
+      historyListEl.appendChild(thread);
     }
   } catch (err) {
     historyListEl.innerHTML = `<p class="history-empty">${err}</p>`;

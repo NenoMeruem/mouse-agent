@@ -146,7 +146,7 @@ var deleteEngineCmd = &cobra.Command{
 	},
 }
 
-// readRawConfig reads ~/.prompt-agent/config.yaml as a plain map.
+// readRawConfig reads ~/.promptly/config.yaml as a plain map.
 func readRawConfig() (map[string]interface{}, error) {
 	path := configPath()
 	data, err := os.ReadFile(path)
@@ -163,7 +163,7 @@ func readRawConfig() (map[string]interface{}, error) {
 	return out, nil
 }
 
-// writeRawConfig writes a plain map back to ~/.prompt-agent/config.yaml.
+// writeRawConfig writes a plain map back to ~/.promptly/config.yaml.
 func writeRawConfig(raw map[string]interface{}) error {
 	path := configPath()
 	if err := os.MkdirAll(filepath.Dir(path), 0755); err != nil {
@@ -178,5 +178,5 @@ func writeRawConfig(raw map[string]interface{}) error {
 
 func configPath() string {
 	home, _ := os.UserHomeDir()
-	return filepath.Join(home, ".prompt-agent", "config.yaml")
+	return filepath.Join(home, ".promptly", "config.yaml")
 }

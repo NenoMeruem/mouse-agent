@@ -11,7 +11,7 @@ import (
 	"strings"
 	"time"
 
-	"github.com/meruem/prompt-builder-agent/internal/llm"
+	"github.com/meruem/promptly/internal/llm"
 )
 
 // Client implements the llm.Client interface for OpenAI's API.
@@ -62,9 +62,18 @@ func (c *Client) Stream(ctx context.Context, req llm.Request) (<-chan llm.Chunk,
 func (c *Client) createRequest(ctx context.Context, req llm.Request) (*http.Request, error) {
 	url := fmt.Sprintf("%s/chat/completions", c.baseURL)
 
+	var msgs []map[string]string
+	if len(req.Messages) > 0 {
+		for _, m := range req.Messages {
+			msgs = append(msgs, map[string]string{"role": m.Role, "content": m.Content})
+		}
+	} else {
+		msgs = []map[string]string{{"role": "user", "content": req.Prompt}}
+	}
+
 	payload := map[string]interface{}{
 		"model":       req.Model,
-		"messages":    []map[string]string{{"role": "user", "content": req.Prompt}},
+		"messages":    msgs,
 		"stream":      true,
 		"temperature": 0.7,
 	}
