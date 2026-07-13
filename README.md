@@ -264,8 +264,25 @@ Press the global shortcut (default `Alt+Space`) from anywhere on your system to 
 
 Or via CLI:
 ```bash
-./prompt-agent config set-hotkey "Ctrl+Shift+Space"
+./promptly config set-hotkey "Ctrl+Shift+Space"
 ```
+
+> [!NOTE]
+> **Linux / Wayland & Window Manager users (Arch Linux, Sway, Hyprland, etc.):**
+> Standard global hotkey interceptors do not function under Wayland. However, the app includes a single-instance plugin that resolves this:
+> 1. Start the Tauri app in the background (e.g. run `./src-tauri/target/debug/promptly` or the production build).
+> 2. Bind your preferred hotkey at your OS or Window Manager level to execute the `promptly` binary path.
+> 3. Pressing the hotkey runs `promptly` again. The new process will notify the running background process, toggling the overlay window instantly.
+> 
+> **Example configurations:**
+> - **Hyprland (`hyprland.conf`):** `bind = ALT, space, exec, /path/to/promptly`
+> - **Sway (`~/.config/sway/config`) or i3 (`~/.config/i3/config`):** `bindsym Mod1+space exec /path/to/promptly`
+> - **sxhkd (`~/.config/sxhkd/sxhkdrc`):**
+>   ```
+>   alt + space
+>       /path/to/promptly
+>   ```
+> *Tip: You can symlink your compiled Tauri binary to your system PATH (e.g., `sudo ln -sf $(pwd)/src-tauri/target/debug/promptly /usr/local/bin/promptly`) to make configuration cleaner.*
 
 ## CLI hotkey daemon (optional)
 
@@ -273,7 +290,9 @@ A separate daemon that runs recipes directly from hotkeys without opening the ov
 
 **macOS:** requires Accessibility permission (`System Preferences → Privacy & Security → Accessibility`).
 
-**Linux (X11):** generate an `xbindkeys` or `sxhkd` config with `daemon setup`.
+**Linux:** run `./promptly daemon setup` to generate the correct configuration. The tool will automatically detect your display server (Wayland vs X11), scan for your installed terminal emulator (Alacritty, Kitty, Konsole, GNOME Terminal, etc.) to use appropriate window holding commands, and output:
+- **X11:** Writes configured hotkeys to `~/.xbindkeysrc`.
+- **Wayland / Window Managers:** Outputs ready-to-copy configuration blocks for Hyprland, Sway, i3, and sxhkd.
 
 **macOS alternative:** generate an `skhd` config with `daemon setup` (requires `brew install skhd`).
 
@@ -282,8 +301,8 @@ A separate daemon that runs recipes directly from hotkeys without opening the ov
 ## Clipboard requirements
 
 - **macOS:** built-in `pbpaste`
-- **Linux X11:** `xclip` or `xsel` (`sudo apt install xclip`)
-- **Linux Wayland:** `wl-paste` (`sudo apt install wl-clipboard`)
+- **Linux X11:** `xclip` or `xsel` (`sudo apt install xclip` or `sudo pacman -S xclip`)
+- **Linux Wayland:** `wl-paste` (`sudo apt install wl-clipboard` or `sudo pacman -S wl-clipboard`)
 - **Windows:** PowerShell `Get-Clipboard` (built-in)
 
 ## Storage & Logging

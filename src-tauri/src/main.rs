@@ -451,12 +451,14 @@ async fn set_hotkey(app: AppHandle, hotkey: String) -> Result<(), String> {
         .map_err(|e| e.to_string())?;
 
     // Unregister all current shortcuts, then register the new one
-    app.global_shortcut()
-        .unregister_all()
-        .map_err(|e| e.to_string())?;
-    app.global_shortcut()
-        .register(hotkey.as_str())
-        .map_err(|e| e.to_string())?;
+    let _ = app.global_shortcut().unregister_all();
+    if let Err(e) = app.global_shortcut().register(hotkey.as_str()) {
+        return Err(format!(
+            "Saved to config, but failed to bind global shortcut: {}. \
+             Note: On Linux/Wayland, you should configure a custom keyboard shortcut in your desktop environment's settings to run the 'promptly' application.",
+            e
+        ));
+    }
 
     Ok(())
 }
@@ -466,6 +468,21 @@ fn main() {
         .plugin(tauri_plugin_shell::init())
         .plugin(tauri_plugin_clipboard_manager::init())
         .plugin(tauri_plugin_positioner::init())
+        .plugin(tauri_plugin_single_instance::init(|app, _argv, _cwd| {
+            if let Some(window) = app.get_webview_window("overlay") {
+                let visible = window.is_visible().unwrap_or(false);
+                if visible {
+                    window.hide().ok();
+                } else {
+                    // Read clipboard and emit to UI before showing
+                    use tauri_plugin_clipboard_manager::ClipboardExt;
+                    let clip = app.clipboard().read_text().unwrap_or_default();
+                    window.emit("selection", clip).ok();
+                    window.show().ok();
+                    window.set_focus().ok();
+                }
+            }
+        }))
         .plugin(
             tauri_plugin_global_shortcut::Builder::new()
                 .with_handler(|app, _shortcut, event| {
@@ -495,7 +512,13 @@ fn main() {
             // Register default hotkey immediately, then async re-register
             // from config.yaml in case the user has customised it.
             use tauri_plugin_global_shortcut::GlobalShortcutExt;
-            app.global_shortcut().register(DEFAULT_HOTKEY)?;
+            if let Err(e) = app.global_shortcut().register(DEFAULT_HOTKEY) {
+                eprintln!(
+                    "Warning: Failed to register default global shortcut '{}': {}. \
+                     This is expected on Wayland or if the hotkey is already in use.",
+                    DEFAULT_HOTKEY, e
+                );
+            }
 
             let app_handle = app.handle().clone();
             tauri::async_runtime::spawn(async move {
@@ -511,7 +534,13 @@ fn main() {
                     let hk = String::from_utf8_lossy(&output.stdout).trim().to_string();
                     if !hk.is_empty() && hk != DEFAULT_HOTKEY {
                         let _ = app_handle.global_shortcut().unregister_all();
-                        let _ = app_handle.global_shortcut().register(hk.as_str());
+                        if let Err(e) = app_handle.global_shortcut().register(hk.as_str()) {
+                            eprintln!(
+                                "Warning: Failed to register custom global shortcut '{}': {}. \
+                                 This is expected on Wayland or if the hotkey is already in use.",
+                                hk, e
+                            );
+                        }
                     }
                 }
             });
