@@ -240,15 +240,17 @@ jobs:
 - ✅ File logging (`~/.prompt-agent/prompt-agent.log`) — `internal/logger/` dùng `log/slog`
 - ✅ Engine display name — `name` field trong `EngineConfig`, `GetEngineName()` với built-in fallback
 - ✅ Windows CLI build — cross-compile từ macOS, `CGO_ENABLED=0`
-- ✅ Settings UI 3 tabs — **Engines** / **Hotkeys** / **About**
+- ✅ Settings UI 4 tabs — **Engines** / **Hotkeys** / **Backup** / **About**
 - ✅ Tauri hotkey config từ UI — key recorder, lưu vào `config.yaml` (`app.hotkey`), apply ngay không cần restart
   - CLI: `config get-hotkey` / `config set-hotkey <hotkey>`
   - Tauri: `get_hotkey` / `set_hotkey` commands
   - Startup: register default `Alt+Space` → async re-register từ config nếu khác
+- ✅ Recipe & Engine Config import/export CSV (CLI & UI)
+  - CLI: `prompt export [file]` / `prompt import [file]`
+  - Tauri: `export_data` / `import_data` commands + Backup Settings UI tab
 
 ### Còn lại
 - History panel trong Tauri UI (tab hoặc slide-in)
-- Recipe import/export JSON (share recipe packs)
 - Winget manifest cho Windows (cần code-signing cert)
 - Shell completions bundle vào Homebrew formula
 

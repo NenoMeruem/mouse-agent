@@ -186,6 +186,7 @@
             <button class="settings-tab active" data-tab="engines">Engines</button>
             <button class="settings-tab" data-tab="hotkeys">Hotkeys</button>
             <button class="settings-tab" data-tab="appearance">Appearance</button>
+            <button class="settings-tab" data-tab="backup">Backup</button>
             <button class="settings-tab" data-tab="about">About</button>
           </div>
 
@@ -295,6 +296,30 @@
                 </button>
               </div>
             </div>
+          </div>
+
+          <!-- ── Tab: Backup ── -->
+          <div id="settings-tab-backup" class="settings-tab-panel">
+            <p class="settings-desc">Export or import your prompt recipes and engine configurations.</p>
+
+            <div class="backup-section">
+              <div class="backup-label">Export Data</div>
+              <p class="backup-hint">Download all your prompt recipes and engine configurations as a CSV file.</p>
+              <button id="backup-export-btn" class="backup-btn-action">Export to CSV</button>
+            </div>
+
+            <div class="backup-section">
+              <div class="backup-label">Import Data</div>
+              <p class="backup-hint">Import prompt recipes and engine configurations from a CSV file. Existing items with the same ID will be updated.</p>
+              <div class="import-controls">
+                <input type="file" id="backup-import-file" accept=".csv" style="display: none;" />
+                <button id="backup-import-btn" class="backup-btn-action secondary">Choose CSV File</button>
+                <span id="import-file-name" class="import-file-name">No file selected</span>
+              </div>
+              <button id="backup-import-submit-btn" class="backup-btn-action" style="margin-top: 10px;" disabled>Import Data</button>
+            </div>
+
+            <div id="backup-msg" class="settings-msg" style="margin-top: 10px;"></div>
           </div>
 
           <!-- ── Tab: About ── -->

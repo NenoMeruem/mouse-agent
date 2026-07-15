@@ -1128,6 +1128,115 @@ settingsBtn.addEventListener('click', async () => {
 
 settingsCloseBtn.addEventListener('click', () => showView('input'));
 
+// ── Backup/Restore ────────────────────────────────────────────────────────────
+let selectedImportFile = null;
+
+async function exportBackup() {
+  const exportBtn = document.getElementById('backup-export-btn');
+  const msgEl = document.getElementById('backup-msg');
+  msgEl.textContent = '';
+  msgEl.className = 'settings-msg';
+
+  try {
+    exportBtn.disabled = true;
+    exportBtn.textContent = 'Exporting...';
+    
+    const csvContent = await invoke('export_data');
+    
+    const blob = new Blob([csvContent], { type: 'text/csv;charset=utf-8;' });
+    const url = URL.createObjectURL(blob);
+    const link = document.createElement("a");
+    link.setAttribute("href", url);
+    
+    const dateStr = new Date().toISOString().slice(0, 10);
+    link.setAttribute("download", `promptly_backup_${dateStr}.csv`);
+    link.style.visibility = 'hidden';
+    document.body.appendChild(link);
+    link.click();
+    document.body.removeChild(link);
+
+    msgEl.textContent = '✓ Export successful!';
+    msgEl.className = 'settings-msg';
+  } catch (err) {
+    console.error(err);
+    msgEl.textContent = `❌ Export failed: ${err}`;
+    msgEl.className = 'settings-msg error';
+  } finally {
+    exportBtn.disabled = false;
+    exportBtn.textContent = 'Export to CSV';
+  }
+}
+
+function setupBackupTab() {
+  const importFileEl = document.getElementById('backup-import-file');
+  const importBtn = document.getElementById('backup-import-btn');
+  const submitBtn = document.getElementById('backup-import-submit-btn');
+  const fileNameSpan = document.getElementById('import-file-name');
+  const exportBtn = document.getElementById('backup-export-btn');
+  const msgEl = document.getElementById('backup-msg');
+
+  exportBtn.addEventListener('click', exportBackup);
+
+  importBtn.addEventListener('click', () => {
+    importFileEl.click();
+  });
+
+  importFileEl.addEventListener('change', (e) => {
+    const file = e.target.files[0];
+    if (file) {
+      selectedImportFile = file;
+      fileNameSpan.textContent = file.name;
+      submitBtn.disabled = false;
+      msgEl.textContent = '';
+    } else {
+      selectedImportFile = null;
+      fileNameSpan.textContent = 'No file selected';
+      submitBtn.disabled = true;
+    }
+  });
+
+  submitBtn.addEventListener('click', async () => {
+    if (!selectedImportFile) return;
+
+    msgEl.textContent = '';
+    msgEl.className = 'settings-msg';
+    submitBtn.disabled = true;
+    submitBtn.textContent = 'Importing...';
+
+    const reader = new FileReader();
+    reader.onload = async (e) => {
+      const csvContent = e.target.result;
+      try {
+        const response = await invoke('import_data', { csvContent });
+        msgEl.textContent = response || '✓ Import successful!';
+        msgEl.className = 'settings-msg';
+        
+        await loadRecipes();
+        await loadEngineConfigs();
+        
+        importFileEl.value = '';
+        selectedImportFile = null;
+        fileNameSpan.textContent = 'No file selected';
+      } catch (err) {
+        console.error(err);
+        msgEl.textContent = `❌ Import failed: ${err}`;
+        msgEl.className = 'settings-msg error';
+        submitBtn.disabled = false;
+      } finally {
+        submitBtn.textContent = 'Import Data';
+      }
+    };
+    reader.onerror = () => {
+      msgEl.textContent = '❌ Failed to read selected file';
+      msgEl.className = 'settings-msg error';
+      submitBtn.disabled = false;
+      submitBtn.textContent = 'Import Data';
+    };
+    reader.readAsText(selectedImportFile);
+  });
+}
+
+
 // ── History ───────────────────────────────────────────────────────────────────
 const historyBtn      = document.getElementById('history-btn');
 const historyCloseBtn = document.getElementById('history-close-btn');
@@ -1307,6 +1416,7 @@ historyClearBtn.addEventListener('click', async () => {
 showView('input');
 loadRecipes();
 loadEngineConfigs();
+setupBackupTab();
 
 // Load clipboard on startup — runs after all variables are declared
 invoke('get_clipboard').then(clip => {

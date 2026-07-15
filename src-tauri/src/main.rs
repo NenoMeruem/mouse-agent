@@ -463,6 +463,66 @@ async fn set_hotkey(app: AppHandle, hotkey: String) -> Result<(), String> {
     Ok(())
 }
 
+/// Export prompt recipes and engine configs to CSV string
+#[tauri::command]
+async fn export_data(app: AppHandle) -> Result<String, String> {
+    let output = app
+        .shell()
+        .sidecar("promptly-cli")
+        .map_err(|e| e.to_string())?
+        .args(["prompt", "export", "-"])
+        .output()
+        .await
+        .map_err(|e| e.to_string())?;
+
+    if output.status.success() {
+        Ok(String::from_utf8_lossy(&output.stdout).to_string())
+    } else {
+        Err(String::from_utf8_lossy(&output.stderr).to_string())
+    }
+}
+
+/// Import prompt recipes and engine configs from CSV string
+#[tauri::command]
+async fn import_data(app: AppHandle, csv_content: String) -> Result<String, String> {
+    let sidecar = app
+        .shell()
+        .sidecar("promptly-cli")
+        .map_err(|e| e.to_string())?
+        .args(["prompt", "import", "-"]);
+
+    let (mut rx, mut child) = sidecar.spawn().map_err(|e| e.to_string())?;
+
+    if !csv_content.is_empty() {
+        child.write(csv_content.as_bytes()).ok();
+    }
+    drop(child); // closes stdin
+
+    let mut stdout = String::new();
+    let mut stderr = String::new();
+
+    while let Some(event) = rx.recv().await {
+        match event {
+            CommandEvent::Stdout(line) => {
+                stdout.push_str(&String::from_utf8_lossy(&line));
+            }
+            CommandEvent::Stderr(line) => {
+                stderr.push_str(&String::from_utf8_lossy(&line));
+            }
+            CommandEvent::Terminated(status) => {
+                if status.code.unwrap_or(-1) == 0 {
+                    return Ok(stdout);
+                } else {
+                    return Err(if !stderr.is_empty() { stderr } else { "Import failed".to_string() });
+                }
+            }
+            _ => {}
+        }
+    }
+
+    Ok(stdout)
+}
+
 fn main() {
     tauri::Builder::default()
         .plugin(tauri_plugin_shell::init())
@@ -589,7 +649,7 @@ fn main() {
                 }
             }
         })
-        .invoke_handler(tauri::generate_handler![run_recipe, send_chat, list_recipes, hide_window, get_clipboard, save_recipe, update_recipe, delete_recipe, reorder_recipes, get_engine_configs, save_engine_config, delete_engine_config, ping_engine, list_history, clear_history, get_hotkey, set_hotkey])
+        .invoke_handler(tauri::generate_handler![run_recipe, send_chat, list_recipes, hide_window, get_clipboard, save_recipe, update_recipe, delete_recipe, reorder_recipes, get_engine_configs, save_engine_config, delete_engine_config, ping_engine, list_history, clear_history, get_hotkey, set_hotkey, export_data, import_data])
         .run(tauri::generate_context!())
         .expect("error while running tauri application");
 }
