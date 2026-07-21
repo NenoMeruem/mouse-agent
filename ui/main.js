@@ -17,9 +17,9 @@ let allRecipes    = [];   // full list cache for re-render
 const paramValues = { tone: 'casual', length: 'short', complexity: 'normal' };
 
 const PARAM_CONFIG = {
-  tone:       { label: 'Style',      emoji: '🔮', options: ['professional', 'casual', 'concise'] },
-  length:     { label: 'Length',     emoji: '📏', options: ['short', 'medium', 'long'] },
-  complexity: { label: 'Complexity', emoji: '🧩', options: ['simple', 'normal', 'technical'] },
+  tone:       { label: 'Style',      emoji: '', options: ['professional', 'casual', 'concise'] },
+  length:     { label: 'Length',     emoji: '', options: ['short', 'medium', 'long'] },
+  complexity: { label: 'Complexity', emoji: '', options: ['simple', 'normal', 'technical'] },
 };
 
 // ── DOM refs ──────────────────────────────────────────────────────────────────
@@ -1059,7 +1059,7 @@ let isRecording = false;
 
 async function loadHotkey() {
   try {
-    const hk = await invoke('get_hotkey');
+    const hk = await invoke('get_hotkey_cmd');
     hotkeyDisplayText.textContent = hk || 'Alt+Space';
   } catch {
     hotkeyDisplayText.textContent = 'Alt+Space';

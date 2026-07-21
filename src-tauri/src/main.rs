@@ -473,19 +473,32 @@ fn set_hotkey(
 ) -> Result<(), String> {
     use tauri_plugin_global_shortcut::GlobalShortcutExt;
 
+    // Read old hotkey before overwriting config, so we can unregister it specifically
+    let old_hotkey = {
+        let cfg = state.config.lock().unwrap();
+        get_hotkey(&cfg)
+    };
+
+    // Persist new hotkey to config
     {
         let mut cfg = state.config.lock().unwrap();
         cfg.hotkey = Some(hotkey.clone());
         save_config(&cfg)?;
     }
 
-    let _ = app.global_shortcut().unregister_all();
+    // Unregister old hotkey specifically (avoids permission issues with unregister_all)
+    if let Err(e) = app.global_shortcut().unregister(old_hotkey.as_str()) {
+        eprintln!("Warning: failed to unregister old hotkey '{}': {}", old_hotkey, e);
+    }
+
+    // Register new hotkey — the global handler set up via with_handler() still applies
     app.global_shortcut().register(hotkey.as_str()).map_err(|e| {
         format!(
-            "Saved to config, but failed to bind global shortcut: {}",
-            e
+            "Saved to config, but failed to bind global shortcut '{}': {}",
+            hotkey, e
         )
     })?;
+
     Ok(())
 }
 
