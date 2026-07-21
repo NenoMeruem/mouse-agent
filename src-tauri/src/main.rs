@@ -1,17 +1,88 @@
 // Prevents additional console window on Windows in release
 #![cfg_attr(not(debug_assertions), windows_subsystem = "windows")]
+#![allow(dead_code)]
 
-use tauri::{AppHandle, Emitter, Manager};
-use tauri_plugin_shell::ShellExt;
-use tauri_plugin_shell::process::CommandEvent;
+mod config;
+mod llm;
+mod models;
+mod prompt;
+mod storage;
 
-const DEFAULT_HOTKEY: &str = "Alt+Space";
+use config::{
+    get_engine_api_key, get_engine_model, get_engine_timeout_secs, get_hotkey,
+    load_config, save_config, AppConfig,
+};
+use models::{LlmRequest, Message, RunRecord};
+use storage::{
+    history_append, history_clear_all, history_list, open_db, prompt_create,
+    prompt_delete, prompt_get, prompt_list, prompt_next_sort_order, prompt_reorder,
+    prompt_update, seed_default_recipes_if_empty,
+};
 
-/// Run a recipe by spawning the Go sidecar, piping selection text via stdin,
-/// and streaming stdout chunks back to the WebView as events.
+use chrono::Utc;
+use rusqlite::Connection;
+use std::collections::HashMap;
+use std::sync::Mutex;
+use std::time::Duration;
+use tauri::{AppHandle, Emitter, Manager, State};
+use tokio::sync::mpsc;
+use uuid::Uuid;
+
+use llm::{
+    claude::ClaudeClient, gemini::GeminiClient, openai::OpenAiClient, LlmClient, Manager as LlmManager,
+};
+
+// ---------------------------------------------------------------------------
+// App State — stored in Tauri's managed state
+// ---------------------------------------------------------------------------
+
+pub struct AppState {
+    pub db: Mutex<Connection>,
+    pub config: Mutex<AppConfig>,
+}
+
+// ---------------------------------------------------------------------------
+// LLM Manager builder — reads API keys, registers available engines
+// ---------------------------------------------------------------------------
+
+fn build_llm_manager(cfg: &AppConfig) -> LlmManager {
+    let mut mgr = LlmManager::new();
+
+    // Iterate ALL engine entries — each has a unique ID but may share a provider.
+    // This allows multiple Gemini instances (e.g. "gemini-flash" + "gemini-pro").
+    for (id, ec) in &cfg.engines {
+        let provider = config::infer_provider(id, ec);
+        let api_key  = get_engine_api_key(cfg, id);
+        if api_key.is_empty() {
+            continue;
+        }
+        let model   = get_engine_model(cfg, id);
+        let timeout = Duration::from_secs(get_engine_timeout_secs(cfg, id));
+
+        let client: Box<dyn LlmClient> = match provider.as_str() {
+            "gemini" => Box::new(GeminiClient::new(api_key, model, timeout)),
+            "openai" => Box::new(OpenAiClient::new(api_key, model, timeout)),
+            "claude" => Box::new(ClaudeClient::new(api_key, model, timeout)),
+            _ => continue,
+        };
+
+        // Register with the entry's unique ID so run_recipe can look up by id
+        mgr.register_id(id.clone(), client);
+    }
+
+    mgr
+}
+
+// ---------------------------------------------------------------------------
+// Tauri Commands
+// ---------------------------------------------------------------------------
+
+/// Run a recipe: build the prompt from selection + variables, call LLM,
+/// stream chunks back to the WebView as `chunk` / `error` / `done` events.
 #[tauri::command]
 async fn run_recipe(
     app: AppHandle,
+    state: State<'_, AppState>,
     recipe_id: String,
     selection: String,
     engine: String,
@@ -20,64 +91,103 @@ async fn run_recipe(
     complexity: String,
     session_id: String,
 ) -> Result<(), String> {
-    let mut args = vec![
-        "run".to_string(),
-        recipe_id.clone(),
-        "--no-select".to_string(),
-        "--raw".to_string(),
-    ];
-    if !engine.is_empty() {
-        args.push("--engine".to_string());
-        args.push(engine);
-    }
-    if !tone.is_empty() {
-        args.push("--tone".to_string());
-        args.push(tone);
-    }
-    if !length.is_empty() {
-        args.push("--length".to_string());
-        args.push(length);
-    }
-    if !complexity.is_empty() {
-        args.push("--complexity".to_string());
-        args.push(complexity);
-    }
-    if !session_id.is_empty() {
-        args.push("--session-id".to_string());
-        args.push(session_id);
-    }
+    // ── 1. Load prompt from DB ──────────────────────────────────────────────
+    let (template, prompt_engine, prompt_id, variables) = {
+        let db = state.db.lock().unwrap();
+        let p = prompt_get(&db, &recipe_id).map_err(|e| e.to_string())?;
+        (p.template, p.engine, p.id, p.variables)
+    };
 
-    let sidecar = app
-        .shell()
-        .sidecar("promptly-cli")
-        .map_err(|e| e.to_string())?
-        .args(&args);
-
-    let (mut rx, mut child) = sidecar.spawn().map_err(|e| e.to_string())?;
-
-    // Write selection text to stdin, then close stdin so Go's io.ReadAll unblocks
+    // ── 2. Build template data map ─────────────────────────────────────────
+    let mut data: HashMap<String, String> = HashMap::new();
     if !selection.is_empty() {
-        child.write(selection.as_bytes()).ok();
+        data.insert("selection".into(), selection.clone());
     }
-    drop(child); // closes stdin pipe → Go's io.ReadAll returns EOF
+    // Fill any remaining {{variable}} from env vars
+    for var in &variables {
+        if !data.contains_key(var.as_str()) {
+            let env_key = format!("PROMPT_{}", var.to_uppercase());
+            if let Ok(val) = std::env::var(&env_key) {
+                data.insert(var.clone(), val);
+            }
+        }
+    }
+
+    // ── 3. Build final prompt ──────────────────────────────────────────────
+    let mut final_prompt = prompt::build_prompt(&template, &data);
+
+    // ── 4. Inject params ──────────────────────────────────────────────────
+    let mut param_values: HashMap<String, String> = HashMap::new();
+    if !tone.is_empty() { param_values.insert("tone".into(), tone); }
+    if !length.is_empty() { param_values.insert("length".into(), length); }
+    if !complexity.is_empty() { param_values.insert("complexity".into(), complexity); }
+    if !param_values.is_empty() {
+        final_prompt = prompt::inject_params(&final_prompt, &param_values);
+    }
+
+    // ── 5. Resolve engine ─────────────────────────────────────────────────
+    let resolved_engine = if engine.is_empty() { prompt_engine } else { engine };
+
+    // ── 6. Build LLM manager and get client ───────────────────────────────
+    let cfg = state.config.lock().unwrap().clone();
+    let llm_mgr = build_llm_manager(&cfg);
+    let model = get_engine_model(&cfg, &resolved_engine);
+
+    let client: &dyn LlmClient = llm_mgr.get(&resolved_engine)
+        .ok_or_else(|| format!("Engine '{}' not configured or API key missing", resolved_engine))?;
+
+    // ── 7. Stream response ─────────────────────────────────────────────────
+    let req = LlmRequest {
+        prompt: final_prompt.clone(),
+        model,
+        messages: vec![],
+    };
+
+    let (tx, mut rx) = mpsc::channel(64);
+    let start = std::time::Instant::now();
+    let mut response_buf = String::new();
+
+    client.stream(req, tx).await;
 
     let app_clone = app.clone();
+    let sid = session_id.clone();
+    let fp = final_prompt.clone();
+    let sel = selection.clone();
+    let eng = resolved_engine.clone();
+    let pid = prompt_id.clone();
+
+    // Spawn receiver task — this runs in the Tauri async runtime
     tauri::async_runtime::spawn(async move {
-        while let Some(event) = rx.recv().await {
-            match event {
-                CommandEvent::Stdout(line) => {
-                    let text = String::from_utf8_lossy(&line).to_string();
-                    app_clone.emit("chunk", text).ok();
+        while let Some(chunk) = rx.recv().await {
+            if let Some(err) = &chunk.error {
+                app_clone.emit("error", err.clone()).ok();
+                break;
+            }
+            if !chunk.text.is_empty() {
+                response_buf.push_str(&chunk.text);
+                app_clone.emit("chunk", chunk.text.clone()).ok();
+            }
+            if chunk.done {
+                let duration_ms = start.elapsed().as_millis() as i64;
+                // Save to history (non-fatal)
+                if let Ok(db_guard) = app_clone.state::<AppState>().db.lock() {
+                    let record = RunRecord {
+                        id: Uuid::new_v4().to_string(),
+                        session_id: sid.clone(),
+                        turn_index: 0,
+                        prompt_id: pid.clone(),
+                        engine: eng.clone(),
+                        input_text: sel.clone(),
+                        final_prompt: fp.clone(),
+                        response: response_buf.clone(),
+                        duration_ms,
+                        error: String::new(),
+                        created_at: Utc::now(),
+                    };
+                    history_append(&db_guard, &record).ok();
                 }
-                CommandEvent::Stderr(line) => {
-                    let text = String::from_utf8_lossy(&line).to_string();
-                    app_clone.emit("error", text).ok();
-                }
-                CommandEvent::Terminated(_) => {
-                    app_clone.emit("done", ()).ok();
-                    break;
-                }
-                _ => {}
+                app_clone.emit("done", ()).ok();
+                break;
             }
         }
     });
@@ -85,70 +195,80 @@ async fn run_recipe(
     Ok(())
 }
 
-/// List all recipes by running `prompt-agent prompt list --output json`
-#[tauri::command]
-async fn list_recipes(app: AppHandle) -> Result<String, String> {
-    let output = app
-        .shell()
-        .sidecar("promptly-cli")
-        .map_err(|e| e.to_string())?
-        .args(["prompt", "list", "--output", "json"])
-        .output()
-        .await
-        .map_err(|e| e.to_string())?;
-
-    Ok(String::from_utf8_lossy(&output.stdout).to_string())
-}
-
-/// Continue a conversation: send full message history to LLM and stream response.
-/// `messages` is a JSON string: [{"role":"user"|"assistant","content":"..."}]
+/// Continue a multi-turn chat conversation.
 #[tauri::command]
 async fn send_chat(
     app: AppHandle,
-    messages: String,
+    state: State<'_, AppState>,
+    messages_json: String,
     engine: String,
     session_id: String,
     turn_index: u32,
     prompt_id: String,
 ) -> Result<(), String> {
-    let turn_str = turn_index.to_string();
-    let args = vec![
-        "chat",
-        "--engine", &engine,
-        "--messages", &messages,
-        "--raw",
-        "--session-id", &session_id,
-        "--turn-index", &turn_str,
-        "--prompt-id", &prompt_id,
-    ];
-    // filter out empty optional args
-    let _ = args.iter(); // keep compiler happy
+    let messages: Vec<Message> = serde_json::from_str(&messages_json)
+        .map_err(|e| format!("Invalid messages JSON: {}", e))?;
 
-    let (mut rx, _child) = app
-        .shell()
-        .sidecar("promptly-cli")
-        .map_err(|e| e.to_string())?
-        .args(&args)
-        .spawn()
-        .map_err(|e| e.to_string())?;
+    if messages.is_empty() {
+        return Err("messages array is empty".into());
+    }
+
+    // Extract last user message for history
+    let user_input = messages.iter().rev()
+        .find(|m| m.role == "user")
+        .map(|m| m.content.clone())
+        .unwrap_or_default();
+
+    let cfg = state.config.lock().unwrap().clone();
+    let llm_mgr = build_llm_manager(&cfg);
+    let model = get_engine_model(&cfg, &engine);
+
+    let client: &dyn LlmClient = llm_mgr.get(&engine)
+        .ok_or_else(|| format!("Engine '{}' not configured or API key missing", engine))?;
+
+    let req = LlmRequest { prompt: String::new(), model, messages: messages.clone() };
+
+    let (tx, mut rx) = mpsc::channel(64);
+    let start = std::time::Instant::now();
+    let mut response_buf = String::new();
+
+    client.stream(req, tx).await;
 
     let app_clone = app.clone();
+    let eng = engine.clone();
+    let sid = session_id.clone();
+    let pid = prompt_id.clone();
+
     tauri::async_runtime::spawn(async move {
-        while let Some(event) = rx.recv().await {
-            match event {
-                CommandEvent::Stdout(line) => {
-                    let text = String::from_utf8_lossy(&line).to_string();
-                    app_clone.emit("chunk", text).ok();
+        while let Some(chunk) = rx.recv().await {
+            if let Some(err) = &chunk.error {
+                app_clone.emit("error", err.clone()).ok();
+                break;
+            }
+            if !chunk.text.is_empty() {
+                response_buf.push_str(&chunk.text);
+                app_clone.emit("chunk", chunk.text.clone()).ok();
+            }
+            if chunk.done {
+                let duration_ms = start.elapsed().as_millis() as i64;
+                if let Ok(db_guard) = app_clone.state::<AppState>().db.lock() {
+                    let record = RunRecord {
+                        id: Uuid::new_v4().to_string(),
+                        session_id: sid.clone(),
+                        turn_index: turn_index as i64,
+                        prompt_id: pid.clone(),
+                        engine: eng.clone(),
+                        input_text: user_input.clone(),
+                        final_prompt: user_input.clone(),
+                        response: response_buf.clone(),
+                        duration_ms,
+                        error: String::new(),
+                        created_at: Utc::now(),
+                    };
+                    history_append(&db_guard, &record).ok();
                 }
-                CommandEvent::Stderr(line) => {
-                    let text = String::from_utf8_lossy(&line).to_string();
-                    app_clone.emit("error", text).ok();
-                }
-                CommandEvent::Terminated(_) => {
-                    app_clone.emit("done", ()).ok();
-                    break;
-                }
-                _ => {}
+                app_clone.emit("done", ()).ok();
+                break;
             }
         }
     });
@@ -156,14 +276,227 @@ async fn send_chat(
     Ok(())
 }
 
-/// Read clipboard text — called by JS on startup to pre-populate selection
+/// Returns all recipes as a JSON array string.
+#[tauri::command]
+fn list_recipes(state: State<'_, AppState>) -> Result<String, String> {
+    let db = state.db.lock().unwrap();
+    let recipes = prompt_list(&db).map_err(|e| e.to_string())?;
+    serde_json::to_string(&recipes).map_err(|e| e.to_string())
+}
+
+/// Save (create) a new recipe.
+#[tauri::command]
+fn save_recipe(
+    state: State<'_, AppState>,
+    id: String,
+    name: String,
+    description: String,
+    template: String,
+    engine: String,
+    params: String,
+    icon: String,
+) -> Result<String, String> {
+    let db = state.db.lock().unwrap();
+    let variables = prompt::extract_variables(&template);
+    let params_vec: Vec<String> = if params.is_empty() {
+        vec![]
+    } else {
+        params.split(',').map(|s| s.trim().to_string()).collect()
+    };
+    let sort_order = prompt_next_sort_order(&db);
+    let now = Utc::now();
+    let p = models::Prompt {
+        id,
+        name,
+        description,
+        engine,
+        template,
+        variables,
+        params: params_vec,
+        icon,
+        sort_order,
+        created_at: now,
+        updated_at: now,
+    };
+    prompt_create(&db, &p).map_err(|e| e.to_string())?;
+    Ok("created".into())
+}
+
+/// Update an existing recipe.
+#[tauri::command]
+fn update_recipe(
+    state: State<'_, AppState>,
+    id: String,
+    name: String,
+    description: String,
+    template: String,
+    engine: String,
+    params: String,
+    icon: String,
+) -> Result<String, String> {
+    let db = state.db.lock().unwrap();
+    let mut existing = prompt_get(&db, &id).map_err(|e| e.to_string())?;
+    if !name.is_empty() { existing.name = name; }
+    if !description.is_empty() { existing.description = description; }
+    if !template.is_empty() {
+        existing.variables = prompt::extract_variables(&template);
+        existing.template = template;
+    }
+    if !engine.is_empty() { existing.engine = engine; }
+    existing.params = if params.is_empty() {
+        vec![]
+    } else {
+        params.split(',').map(|s| s.trim().to_string()).collect()
+    };
+    if !icon.is_empty() { existing.icon = icon; }
+    prompt_update(&db, &existing).map_err(|e| e.to_string())?;
+    Ok("updated".into())
+}
+
+/// Delete a recipe by ID.
+#[tauri::command]
+fn delete_recipe(state: State<'_, AppState>, id: String) -> Result<String, String> {
+    let db = state.db.lock().unwrap();
+    prompt_delete(&db, &id).map_err(|e| e.to_string())?;
+    Ok("deleted".into())
+}
+
+/// Reorder recipes by providing their IDs in the desired order.
+#[tauri::command]
+fn reorder_recipes(state: State<'_, AppState>, ids: Vec<String>) -> Result<String, String> {
+    let db = state.db.lock().unwrap();
+    prompt_reorder(&db, &ids).map_err(|e| e.to_string())?;
+    Ok("reordered".into())
+}
+
+/// Returns all engine configs as a JSON array.
+#[tauri::command]
+fn get_engine_configs(state: State<'_, AppState>) -> Result<String, String> {
+    let cfg = state.config.lock().unwrap();
+    Ok(config::get_engine_configs_json(&cfg))
+}
+
+/// Upsert (create or update) a single engine config.
+/// `engine` = unique user-defined ID (e.g. "gemini-flash", "my-gpt4")
+/// `provider` = API provider type: "gemini" | "openai" | "claude"
+#[tauri::command]
+fn save_engine_config(
+    state: State<'_, AppState>,
+    engine: String,
+    provider: String,
+    api_key: String,
+    model: String,
+    name: String,
+) -> Result<String, String> {
+    if engine.trim().is_empty() {
+        return Err("Engine ID cannot be empty".into());
+    }
+    let mut cfg = state.config.lock().unwrap();
+    // Always overwrite all fields so the UI can intentionally clear them
+    let ec = cfg.engines.entry(engine).or_default();
+    if !provider.is_empty() {
+        ec.provider = provider;
+    }
+    ec.api_key = api_key;
+    ec.model   = model;
+    ec.name    = name;
+    save_config(&cfg)?;
+    Ok("saved".into())
+}
+
+/// Delete an engine config by name.
+#[tauri::command]
+fn delete_engine_config(state: State<'_, AppState>, engine: String) -> Result<String, String> {
+    let mut cfg = state.config.lock().unwrap();
+    cfg.engines.remove(&engine);
+    save_config(&cfg)?;
+    Ok("deleted".into())
+}
+
+/// Quick connectivity check: send a minimal prompt to the engine and return
+/// "ok" on success or an error message.
+#[tauri::command]
+async fn ping_engine(state: State<'_, AppState>, engine: String) -> Result<String, String> {
+    let cfg = state.config.lock().unwrap().clone();
+    let llm_mgr = build_llm_manager(&cfg);
+    let model = get_engine_model(&cfg, &engine);
+
+    let client = llm_mgr.get(&engine)
+        .ok_or_else(|| format!("Engine '{}' not configured", engine))?;
+
+    let (tx, mut rx) = mpsc::channel(8);
+    client.stream(
+        LlmRequest { prompt: "Respond with exactly: ok".into(), model, messages: vec![] },
+        tx,
+    ).await;
+
+    while let Some(chunk) = rx.recv().await {
+        if let Some(err) = chunk.error {
+            return Err(err);
+        }
+        if chunk.done {
+            return Ok("ok".into());
+        }
+    }
+    Ok("ok".into())
+}
+
+/// Returns the run history as a JSON array (most recent 50 entries).
+#[tauri::command]
+fn list_history(state: State<'_, AppState>) -> Result<String, String> {
+    let db = state.db.lock().unwrap();
+    let records = history_list(&db, 50, "").map_err(|e| e.to_string())?;
+    serde_json::to_string(&records).map_err(|e| e.to_string())
+}
+
+/// Deletes all run history records.
+#[tauri::command]
+fn clear_history(state: State<'_, AppState>) -> Result<String, String> {
+    let db = state.db.lock().unwrap();
+    history_clear_all(&db).map_err(|e| e.to_string())?;
+    Ok("cleared".into())
+}
+
+/// Returns the configured global hotkey string.
+#[tauri::command]
+fn get_hotkey_cmd(state: State<'_, AppState>) -> String {
+    let cfg = state.config.lock().unwrap();
+    get_hotkey(&cfg)
+}
+
+/// Persists a new hotkey and re-registers the global shortcut immediately.
+#[tauri::command]
+fn set_hotkey(
+    app: AppHandle,
+    state: State<'_, AppState>,
+    hotkey: String,
+) -> Result<(), String> {
+    use tauri_plugin_global_shortcut::GlobalShortcutExt;
+
+    {
+        let mut cfg = state.config.lock().unwrap();
+        cfg.hotkey = Some(hotkey.clone());
+        save_config(&cfg)?;
+    }
+
+    let _ = app.global_shortcut().unregister_all();
+    app.global_shortcut().register(hotkey.as_str()).map_err(|e| {
+        format!(
+            "Saved to config, but failed to bind global shortcut: {}",
+            e
+        )
+    })?;
+    Ok(())
+}
+
+/// Read clipboard text — called by JS on startup to pre-populate the selection field.
 #[tauri::command]
 fn get_clipboard(app: AppHandle) -> String {
     use tauri_plugin_clipboard_manager::ClipboardExt;
     app.clipboard().read_text().unwrap_or_default()
 }
 
-/// Hide the overlay window
+/// Hide the overlay window.
 #[tauri::command]
 fn hide_window(app: AppHandle) {
     if let Some(window) = app.get_webview_window("overlay") {
@@ -171,361 +504,53 @@ fn hide_window(app: AppHandle) {
     }
 }
 
-/// Save (create) a new recipe by calling the Go sidecar with flags
+/// Export all prompt recipes as JSON.
 #[tauri::command]
-async fn save_recipe(
-    app: AppHandle,
-    id: String,
-    name: String,
-    description: String,
-    template: String,
-    engine: String,
-    params: String,
-    icon: String,
-) -> Result<String, String> {
-    let mut args: Vec<String> = vec![
-        "prompt".into(), "add".into(),
-        "--id".into(), id,
-        "--name".into(), name,
-        "--template".into(), template,
-    ];
-    if !description.is_empty() {
-        args.push("--description".into());
-        args.push(description);
-    }
-    if !engine.is_empty() {
-        args.push("--engine".into());
-        args.push(engine);
-    }
-    if !params.is_empty() {
-        args.push("--params".into());
-        args.push(params);
-    }
-    if !icon.is_empty() {
-        args.push("--icon".into());
-        args.push(icon);
-    }
-
-    let output = app
-        .shell()
-        .sidecar("promptly-cli")
-        .map_err(|e| e.to_string())?
-        .args(&args)
-        .output()
-        .await
-        .map_err(|e| e.to_string())?;
-
-    if output.status.success() {
-        Ok(String::from_utf8_lossy(&output.stdout).to_string())
-    } else {
-        Err(String::from_utf8_lossy(&output.stderr).to_string())
-    }
+fn export_data(state: State<'_, AppState>) -> Result<String, String> {
+    let db = state.db.lock().unwrap();
+    let recipes = prompt_list(&db).map_err(|e| e.to_string())?;
+    serde_json::to_string_pretty(&recipes).map_err(|e| e.to_string())
 }
 
-/// Reorder recipes by providing IDs in the desired display order
+/// Import prompt recipes from a JSON string (array of Prompt objects).
 #[tauri::command]
-async fn reorder_recipes(app: AppHandle, ids: Vec<String>) -> Result<String, String> {
-    let mut args = vec!["prompt".to_string(), "reorder".to_string()];
-    args.extend(ids);
+fn import_data(state: State<'_, AppState>, json_content: String) -> Result<String, String> {
+    let recipes: Vec<models::Prompt> = serde_json::from_str(&json_content)
+        .map_err(|e| format!("Invalid JSON: {}", e))?;
 
-    let output = app
-        .shell()
-        .sidecar("promptly-cli")
-        .map_err(|e| e.to_string())?
-        .args(&args)
-        .output()
-        .await
-        .map_err(|e| e.to_string())?;
-
-    if output.status.success() {
-        Ok(String::from_utf8_lossy(&output.stdout).to_string())
-    } else {
-        Err(String::from_utf8_lossy(&output.stderr).to_string())
-    }
-}
-
-/// Delete a recipe by ID
-#[tauri::command]
-async fn delete_recipe(app: AppHandle, id: String) -> Result<String, String> {
-    let output = app
-        .shell()
-        .sidecar("promptly-cli")
-        .map_err(|e| e.to_string())?
-        .args(["prompt", "delete", &id, "--yes"])
-        .output()
-        .await
-        .map_err(|e| e.to_string())?;
-
-    if output.status.success() {
-        Ok(String::from_utf8_lossy(&output.stdout).to_string())
-    } else {
-        Err(String::from_utf8_lossy(&output.stderr).to_string())
-    }
-}
-
-/// Get engine configs as JSON
-#[tauri::command]
-async fn get_engine_configs(app: AppHandle) -> Result<String, String> {
-    let output = app
-        .shell()
-        .sidecar("promptly-cli")
-        .map_err(|e| e.to_string())?
-        .args(["config", "get-engines"])
-        .output()
-        .await
-        .map_err(|e| e.to_string())?;
-    Ok(String::from_utf8_lossy(&output.stdout).trim().to_string())
-}
-
-/// Save a single engine config (api_key + model)
-#[tauri::command]
-async fn save_engine_config(
-    app: AppHandle,
-    engine: String,
-    api_key: String,
-    model: String,
-    name: String,
-) -> Result<String, String> {
-    let mut args = vec!["config".to_string(), "set-engine".to_string(), engine];
-    args.extend(["--api-key".to_string(), api_key]);
-    args.extend(["--model".to_string(), model]);
-    if !name.is_empty() {
-        args.extend(["--name".to_string(), name]);
-    }
-
-    let output = app
-        .shell()
-        .sidecar("promptly-cli")
-        .map_err(|e| e.to_string())?
-        .args(&args)
-        .output()
-        .await
-        .map_err(|e| e.to_string())?;
-
-    if output.status.success() {
-        Ok(String::from_utf8_lossy(&output.stdout).to_string())
-    } else {
-        Err(String::from_utf8_lossy(&output.stderr).to_string())
-    }
-}
-
-/// Delete an engine config by name
-#[tauri::command]
-async fn delete_engine_config(app: AppHandle, engine: String) -> Result<String, String> {
-    let output = app
-        .shell()
-        .sidecar("promptly-cli")
-        .map_err(|e| e.to_string())?
-        .args(["config", "delete-engine", &engine])
-        .output()
-        .await
-        .map_err(|e| e.to_string())?;
-
-    if output.status.success() {
-        Ok(String::from_utf8_lossy(&output.stdout).to_string())
-    } else {
-        Err(String::from_utf8_lossy(&output.stderr).to_string())
-    }
-}
-
-/// Ping an engine to check if API key is valid and within quota
-#[tauri::command]
-async fn ping_engine(app: AppHandle, engine: String) -> Result<String, String> {
-    let output = app
-        .shell()
-        .sidecar("promptly-cli")
-        .map_err(|e| e.to_string())?
-        .args(["config", "ping-engine", &engine])
-        .output()
-        .await
-        .map_err(|e| e.to_string())?;
-
-    Ok(String::from_utf8_lossy(&output.stdout).trim().to_string())
-}
-
-/// List run history as JSON (limit 50)
-#[tauri::command]
-async fn list_history(app: AppHandle) -> Result<String, String> {
-    let output = app
-        .shell()
-        .sidecar("promptly-cli")
-        .map_err(|e| e.to_string())?
-        .args(["history", "--limit", "50", "--output-json"])
-        .output()
-        .await
-        .map_err(|e| e.to_string())?;
-
-    if output.status.success() {
-        Ok(String::from_utf8_lossy(&output.stdout).to_string())
-    } else {
-        Err(String::from_utf8_lossy(&output.stderr).to_string())
-    }
-}
-
-/// Clear all run history
-#[tauri::command]
-async fn clear_history(app: AppHandle) -> Result<String, String> {
-    let output = app
-        .shell()
-        .sidecar("promptly-cli")
-        .map_err(|e| e.to_string())?
-        .args(["history", "clear", "--all"])
-        .output()
-        .await
-        .map_err(|e| e.to_string())?;
-
-    if output.status.success() {
-        Ok("cleared".to_string())
-    } else {
-        Err(String::from_utf8_lossy(&output.stderr).to_string())
-    }
-}
-
-/// Update an existing recipe via flags
-#[tauri::command]
-async fn update_recipe(
-    app: AppHandle,
-    id: String,
-    name: String,
-    description: String,
-    template: String,
-    engine: String,
-    params: String,
-    icon: String,
-) -> Result<String, String> {
-    let mut args: Vec<String> = vec!["prompt".into(), "update".into(), id];
-    if !name.is_empty()        { args.extend(["--name".into(), name]); }
-    if !description.is_empty() { args.extend(["--description".into(), description]); }
-    if !template.is_empty()    { args.extend(["--template".into(), template]); }
-    if !engine.is_empty()      { args.extend(["--engine".into(), engine]); }
-    args.extend(["--params".into(), params]);
-    if !icon.is_empty()        { args.extend(["--icon".into(), icon]); }
-
-    let output = app
-        .shell()
-        .sidecar("promptly-cli")
-        .map_err(|e| e.to_string())?
-        .args(&args)
-        .output()
-        .await
-        .map_err(|e| e.to_string())?;
-
-    if output.status.success() {
-        Ok(String::from_utf8_lossy(&output.stdout).to_string())
-    } else {
-        Err(String::from_utf8_lossy(&output.stderr).to_string())
-    }
-}
-
-/// Return the currently configured hotkey string.
-#[tauri::command]
-async fn get_hotkey(app: AppHandle) -> String {
-    match app
-        .shell()
-        .sidecar("promptly-cli")
-        .unwrap()
-        .args(["config", "get-hotkey"])
-        .output()
-        .await
-    {
-        Ok(output) => {
-            let hk = String::from_utf8_lossy(&output.stdout).trim().to_string();
-            if hk.is_empty() { DEFAULT_HOTKEY.to_string() } else { hk }
+    let db = state.db.lock().unwrap();
+    let mut imported = 0usize;
+    for mut recipe in recipes {
+        recipe.variables = prompt::extract_variables(&recipe.template);
+        if recipe.sort_order == 0 {
+            recipe.sort_order = prompt_next_sort_order(&db);
         }
-        Err(_) => DEFAULT_HOTKEY.to_string(),
-    }
-}
-
-/// Save a new hotkey and re-register the global shortcut immediately.
-#[tauri::command]
-async fn set_hotkey(app: AppHandle, hotkey: String) -> Result<(), String> {
-    use tauri_plugin_global_shortcut::GlobalShortcutExt;
-
-    // Persist via Go CLI
-    app.shell()
-        .sidecar("promptly-cli")
-        .map_err(|e| e.to_string())?
-        .args(["config", "set-hotkey", &hotkey])
-        .output()
-        .await
-        .map_err(|e| e.to_string())?;
-
-    // Unregister all current shortcuts, then register the new one
-    let _ = app.global_shortcut().unregister_all();
-    if let Err(e) = app.global_shortcut().register(hotkey.as_str()) {
-        return Err(format!(
-            "Saved to config, but failed to bind global shortcut: {}. \
-             Note: On Linux/Wayland, you should configure a custom keyboard shortcut in your desktop environment's settings to run the 'promptly' application.",
-            e
-        ));
-    }
-
-    Ok(())
-}
-
-/// Export prompt recipes and engine configs to CSV string
-#[tauri::command]
-async fn export_data(app: AppHandle) -> Result<String, String> {
-    let output = app
-        .shell()
-        .sidecar("promptly-cli")
-        .map_err(|e| e.to_string())?
-        .args(["prompt", "export", "-"])
-        .output()
-        .await
-        .map_err(|e| e.to_string())?;
-
-    if output.status.success() {
-        Ok(String::from_utf8_lossy(&output.stdout).to_string())
-    } else {
-        Err(String::from_utf8_lossy(&output.stderr).to_string())
-    }
-}
-
-/// Import prompt recipes and engine configs from CSV string
-#[tauri::command]
-async fn import_data(app: AppHandle, csv_content: String) -> Result<String, String> {
-    let sidecar = app
-        .shell()
-        .sidecar("promptly-cli")
-        .map_err(|e| e.to_string())?
-        .args(["prompt", "import", "-"]);
-
-    let (mut rx, mut child) = sidecar.spawn().map_err(|e| e.to_string())?;
-
-    if !csv_content.is_empty() {
-        child.write(csv_content.as_bytes()).ok();
-    }
-    drop(child); // closes stdin
-
-    let mut stdout = String::new();
-    let mut stderr = String::new();
-
-    while let Some(event) = rx.recv().await {
-        match event {
-            CommandEvent::Stdout(line) => {
-                stdout.push_str(&String::from_utf8_lossy(&line));
-            }
-            CommandEvent::Stderr(line) => {
-                stderr.push_str(&String::from_utf8_lossy(&line));
-            }
-            CommandEvent::Terminated(status) => {
-                if status.code.unwrap_or(-1) == 0 {
-                    return Ok(stdout);
-                } else {
-                    return Err(if !stderr.is_empty() { stderr } else { "Import failed".to_string() });
-                }
-            }
-            _ => {}
+        // Skip if already exists
+        if prompt_get(&db, &recipe.id).is_err() {
+            prompt_create(&db, &recipe).map_err(|e| e.to_string())?;
+            imported += 1;
         }
     }
-
-    Ok(stdout)
+    Ok(format!("Imported {} recipe(s)", imported))
 }
+
+// ---------------------------------------------------------------------------
+// main
+// ---------------------------------------------------------------------------
 
 fn main() {
+    let cfg = load_config();
+    let db_path = config::db_path();
+    let conn = open_db(&db_path).expect("Failed to open SQLite database");
+    seed_default_recipes_if_empty(&conn).ok();
+
+    let state = AppState {
+        db: Mutex::new(conn),
+        config: Mutex::new(cfg),
+    };
+
     tauri::Builder::default()
-        .plugin(tauri_plugin_shell::init())
+        .manage(state)
         .plugin(tauri_plugin_clipboard_manager::init())
         .plugin(tauri_plugin_positioner::init())
         .plugin(tauri_plugin_single_instance::init(|app, _argv, _cwd| {
@@ -534,7 +559,6 @@ fn main() {
                 if visible {
                     window.hide().ok();
                 } else {
-                    // Read clipboard and emit to UI before showing
                     use tauri_plugin_clipboard_manager::ClipboardExt;
                     let clip = app.clipboard().read_text().unwrap_or_default();
                     window.emit("selection", clip).ok();
@@ -553,12 +577,8 @@ fn main() {
                             if visible {
                                 window.hide().ok();
                             } else {
-                                // Read clipboard and emit to UI before showing
                                 use tauri_plugin_clipboard_manager::ClipboardExt;
-                                let clip = app
-                                    .clipboard()
-                                    .read_text()
-                                    .unwrap_or_default();
+                                let clip = app.clipboard().read_text().unwrap_or_default();
                                 window.emit("selection", clip).ok();
                                 window.show().ok();
                                 window.set_focus().ok();
@@ -569,56 +589,40 @@ fn main() {
                 .build(),
         )
         .setup(|app| {
-            // Register default hotkey immediately, then async re-register
-            // from config.yaml in case the user has customised it.
             use tauri_plugin_global_shortcut::GlobalShortcutExt;
-            if let Err(e) = app.global_shortcut().register(DEFAULT_HOTKEY) {
-                eprintln!(
-                    "Warning: Failed to register default global shortcut '{}': {}. \
-                     This is expected on Wayland or if the hotkey is already in use.",
-                    DEFAULT_HOTKEY, e
-                );
+
+            // Register hotkey from config (or fall back to default)
+            let hk = {
+                let app_state = app.state::<AppState>();
+                let cfg_guard = app_state.config.lock().unwrap();
+                get_hotkey(&cfg_guard)
+            };
+            if let Err(e) = app.global_shortcut().register(hk.as_str()) {
+                eprintln!("Warning: failed to register hotkey '{}': {}", hk, e);
             }
 
-            let app_handle = app.handle().clone();
-            tauri::async_runtime::spawn(async move {
-                use tauri_plugin_global_shortcut::GlobalShortcutExt;
-                if let Ok(output) = app_handle
-                    .shell()
-                    .sidecar("promptly-cli")
-                    .unwrap()
-                    .args(["config", "get-hotkey"])
-                    .output()
-                    .await
-                {
-                    let hk = String::from_utf8_lossy(&output.stdout).trim().to_string();
-                    if !hk.is_empty() && hk != DEFAULT_HOTKEY {
-                        let _ = app_handle.global_shortcut().unregister_all();
-                        if let Err(e) = app_handle.global_shortcut().register(hk.as_str()) {
-                            eprintln!(
-                                "Warning: Failed to register custom global shortcut '{}': {}. \
-                                 This is expected on Wayland or if the hotkey is already in use.",
-                                hk, e
-                            );
-                        }
-                    }
-                }
-            });
-
-            // macOS: hide from dock — must be set before showing the window
+            // macOS: hide from Dock
             #[cfg(target_os = "macos")]
             app.set_activation_policy(tauri::ActivationPolicy::Accessory);
 
-            // Show window on startup — clipboard is loaded by JS after page load
+            // Show overlay window on startup
             if let Some(window) = app.get_webview_window("overlay") {
                 window.show().ok();
                 window.set_focus().ok();
             }
 
-            // System tray
+            // System tray — load the template icon (white PNG, transparent bg)
             use tauri::tray::{TrayIconBuilder, TrayIconEvent};
-            TrayIconBuilder::new()
+
+            let mut tray_builder = TrayIconBuilder::new()
                 .tooltip("Promptly")
+                .icon(tauri::include_image!("icons/trayTemplate.png"));
+
+            // Tell macOS to treat this as a template image (auto adapts to dark/light mode)
+            #[cfg(target_os = "macos")]
+            { tray_builder = tray_builder.icon_as_template(true); }
+
+            tray_builder
                 .on_tray_icon_event(|tray, event| {
                     if let TrayIconEvent::Click { .. } = event {
                         let app = tray.app_handle();
@@ -633,15 +637,12 @@ fn main() {
             Ok(())
         })
         .on_window_event(|window, event| {
-            // Hide overlay when it loses focus — but delay to avoid hiding during drag.
-            // On macOS, WKWebView briefly fires Focused(false) when a native drag starts,
-            // which would immediately hide the window. We wait 400ms and re-check focus
-            // so a genuine click-outside still hides, but drags are not interrupted.
+            // Hide overlay on focus loss (with 400ms debounce for drag)
             if let tauri::WindowEvent::Focused(false) = event {
                 if window.label() == "overlay" {
                     let w = window.clone();
                     std::thread::spawn(move || {
-                        std::thread::sleep(std::time::Duration::from_millis(400));
+                        std::thread::sleep(Duration::from_millis(400));
                         if !w.is_focused().unwrap_or(true) {
                             w.hide().ok();
                         }
@@ -649,7 +650,27 @@ fn main() {
                 }
             }
         })
-        .invoke_handler(tauri::generate_handler![run_recipe, send_chat, list_recipes, hide_window, get_clipboard, save_recipe, update_recipe, delete_recipe, reorder_recipes, get_engine_configs, save_engine_config, delete_engine_config, ping_engine, list_history, clear_history, get_hotkey, set_hotkey, export_data, import_data])
+        .invoke_handler(tauri::generate_handler![
+            run_recipe,
+            send_chat,
+            list_recipes,
+            save_recipe,
+            update_recipe,
+            delete_recipe,
+            reorder_recipes,
+            get_engine_configs,
+            save_engine_config,
+            delete_engine_config,
+            ping_engine,
+            list_history,
+            clear_history,
+            get_hotkey_cmd,
+            set_hotkey,
+            get_clipboard,
+            hide_window,
+            export_data,
+            import_data,
+        ])
         .run(tauri::generate_context!())
         .expect("error while running tauri application");
 }

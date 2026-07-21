@@ -836,7 +836,8 @@ const engineFormTitle = document.getElementById('engine-form-title');
 const engineFormCancel = document.getElementById('engine-form-cancel');
 const engineFormSave  = document.getElementById('engine-form-save');
 const engineFormErr   = document.getElementById('engine-form-err');
-const efId    = document.getElementById('ef-id');
+const efId       = document.getElementById('ef-id');       // text input: unique slug
+const efProvider = document.getElementById('ef-provider'); // select: gemini/openai/claude
 const efName  = document.getElementById('ef-name');
 const efKey   = document.getElementById('ef-key');
 const efModel = document.getElementById('ef-model');
@@ -844,9 +845,25 @@ const efModel = document.getElementById('ef-model');
 let editingEngine = null; // null = new, string = engine id being edited
 
 const ENGINE_MODELS = {
-  gemini: ['gemini-2.5-flash', 'gemini-2.5-flash-lite', 'gemini-2.0-flash', 'gemini-1.5-flash', 'gemini-1.5-pro'],
-  claude: ['claude-opus-4-6', 'claude-sonnet-4-6', 'claude-haiku-4-5-20251001'],
-  openai: ['gpt-4o', 'gpt-4o-mini', 'gpt-4-turbo', 'gpt-3.5-turbo'],
+  gemini: [
+    'gemini-2.5-pro',
+    'gemini-2.5-flash',
+    'gemini-2.5-flash-lite',
+    'gemini-2.0-flash',
+    'gemini-1.5-flash',
+    'gemini-1.5-pro',
+  ],
+  claude: [
+    'claude-opus-4-5',
+    'claude-sonnet-4-5',
+    'claude-haiku-4-5',
+  ],
+  openai: [
+    'gpt-4o',
+    'gpt-4o-mini',
+    'gpt-4-turbo',
+    'gpt-3.5-turbo',
+  ],
 };
 
 function updateModelDatalist(engineId) {
@@ -862,8 +879,20 @@ function updateModelDatalist(engineId) {
 
 async function loadEngineConfigs() {
   try {
-    const json = await invoke('get_engine_configs');
-    engineConfigs = JSON.parse(json) || {};
+    const raw = await invoke('get_engine_configs');
+    // Backend returns Array [{id, provider, name, api_key, model}, ...]
+    const arr = JSON.parse(raw);
+    engineConfigs = {};
+    if (Array.isArray(arr)) {
+      for (const item of arr) {
+        engineConfigs[item.id] = {
+          provider: item.provider,
+          name: item.name,
+          api_key: item.api_key,
+          model: item.model,
+        };
+      }
+    }
   } catch {
     engineConfigs = {};
   }
@@ -889,7 +918,8 @@ function renderEngineList() {
       <div class="engine-header">
         <span class="engine-dot"></span>
         <span class="engine-name">${displayName}</span>
-        ${cfg.name ? `<span class="engine-id-badge">${eng}</span>` : ''}
+        <span class="engine-id-badge">${eng}</span>
+        ${cfg.provider ? `<span class="engine-provider-badge">${cfg.provider}</span>` : ''}
         <span class="engine-status ${hasKey ? 'configured' : 'empty'}">${hasKey ? 'Configured' : 'Not set'}</span>
         <div class="engine-card-actions">
           <button class="engine-edit-btn" data-engine="${eng}" title="Edit">Edit</button>
@@ -909,32 +939,47 @@ function renderEngineList() {
 
 const ENGINE_KEY_PLACEHOLDERS = { gemini: 'AIza...', claude: 'sk-ant-...', openai: 'sk-...' };
 
-function applyEngineFormDefaults(engId) {
-  updateModelDatalist(engId);
-  efKey.placeholder = ENGINE_KEY_PLACEHOLDERS[engId] || 'api-key';
+function applyEngineFormDefaults(provider) {
+  updateModelDatalist(provider);
+  efKey.placeholder = ENGINE_KEY_PLACEHOLDERS[provider] || 'api-key';
 }
 
 function openEngineForm(engId = null) {
   editingEngine = engId;
   engineFormTitle.textContent = engId ? `Edit — ${engId}` : 'New Engine';
-  efId.value    = engId || 'gemini'; // default to first option
-  efId.disabled = !!engId; // can't change engine type when editing
-  const cfg     = engId ? (engineConfigs[engId] || {}) : {};
-  const key     = cfg.api_key || '';
-  efName.value  = cfg.name || '';
+
+  // ID field: editable only when creating new
+  efId.value    = engId || '';
+  efId.disabled = !!engId;
+
+  // Load existing config if editing
+  const cfg = engId ? (engineConfigs[engId] || {}) : {};
+  const key = cfg.api_key || '';
+  const provider = cfg.provider || 'gemini';
+
+  efProvider.value = provider;
+  efProvider.disabled = !!engId; // lock provider when editing (changing would break the entry)
+  efName.value  = cfg.name  || '';
   efKey.value   = key.startsWith('env:') ? '' : key;
   efModel.value = cfg.model || '';
-  applyEngineFormDefaults(efId.value);
+
+  // Update model datalist + key placeholder for selected provider
+  applyEngineFormDefaults(provider);
   if (key.startsWith('env:')) efKey.placeholder = key;
+
   engineFormErr.textContent = '';
   engineForm.classList.remove('hidden');
-  efKey.focus();
+  efId.disabled ? efKey.focus() : efId.focus();
 }
 
 function closeEngineForm() {
   engineForm.classList.add('hidden');
   editingEngine = null;
+  efId.value = '';
+  efProvider.value = 'gemini';
   efName.value = '';
+  efKey.value = '';
+  efModel.value = '';
 }
 
 function deleteEngine(eng) {
@@ -960,14 +1005,28 @@ async function doDeleteEngine(eng) {
 addEngineBtn.addEventListener('click', () => openEngineForm(null));
 engineFormCancel.addEventListener('click', closeEngineForm);
 
-// Update model suggestions and key placeholder when engine changes
-efId.addEventListener('change', () => applyEngineFormDefaults(efId.value));
+// Update model suggestions and key placeholder when provider changes
+efProvider.addEventListener('change', () => applyEngineFormDefaults(efProvider.value));
 
 engineFormSave.addEventListener('click', async () => {
-  const id    = efId.value;
+  const id       = editingEngine || efId.value.trim().toLowerCase().replace(/\s+/g, '-');
+  const provider = editingEngine
+    ? (engineConfigs[editingEngine]?.provider || efProvider.value)
+    : efProvider.value;
   const name  = efName.value.trim();
   const key   = efKey.value.trim();
   const model = efModel.value.trim();
+
+  if (!id) {
+    engineFormErr.textContent = 'ID is required (e.g. gemini-flash).';
+    return;
+  }
+
+  // Check duplicate ID when creating new
+  if (!editingEngine && engineConfigs[id]) {
+    engineFormErr.textContent = `ID "${id}" already exists. Choose a different ID.`;
+    return;
+  }
 
   engineFormSave.disabled = true;
   engineFormSave.textContent = 'Saving…';
@@ -975,7 +1034,8 @@ engineFormSave.addEventListener('click', async () => {
   settingsMsg.textContent = '';
 
   try {
-    await invoke('save_engine_config', { engine: id, apiKey: key, model, name });
+    // Always pass all fields — backend handles empty strings as "clear field"
+    await invoke('save_engine_config', { engine: id, provider, apiKey: key, model, name });
     await loadEngineConfigs();
     closeEngineForm();
     settingsMsg.textContent = `✓ Engine "${id}" saved`;

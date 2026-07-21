@@ -205,8 +205,12 @@
                 <button class="icon-btn" id="engine-form-cancel">✕</button>
               </div>
               <div class="form-row">
-                <label class="form-label">Engine <span class="required">*</span></label>
-                <select class="form-input form-select" id="ef-id">
+                <label class="form-label">ID <span class="required">*</span> <span class="form-hint">— unique slug, e.g. gemini-flash</span></label>
+                <input class="form-input" id="ef-id" type="text" placeholder="e.g. gemini-flash" autocomplete="off" />
+              </div>
+              <div class="form-row">
+                <label class="form-label">Provider <span class="required">*</span></label>
+                <select class="form-input form-select" id="ef-provider">
                   <option value="gemini">Gemini</option>
                   <option value="claude">Claude</option>
                   <option value="openai">OpenAI</option>

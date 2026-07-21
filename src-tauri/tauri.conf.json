@@ -8,8 +8,7 @@
   "bundle": {
     "active": true,
     "targets": "all",
-    "icon": [],
-    "externalBin": ["binaries/promptly-cli"]
+    "icon": []
   },
   "app": {
     "windows": [
@@ -31,10 +30,5 @@
     },
     "withGlobalTauri": true,
     "macOSPrivateApi": true
-  },
-  "plugins": {
-    "shell": {
-      "open": false
-    }
   }
 }
