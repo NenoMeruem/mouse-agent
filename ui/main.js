@@ -1267,7 +1267,7 @@ function setupBackupTab() {
     reader.onload = async (e) => {
       const csvContent = e.target.result;
       try {
-        const response = await invoke('import_data', { csvContent });
+        const response = await invoke('import_data', { jsonContent: csvContent });
         msgEl.textContent = response || '✓ Import successful!';
         msgEl.className = 'settings-msg';
         
@@ -1470,6 +1470,12 @@ historyClearBtn.addEventListener('click', async () => {
   } catch (err) {
     historyListEl.innerHTML = `<p class="history-empty">Error: ${err}</p>`;
   }
+});
+
+// Listen for tray menu event to open history
+listen('open-history', async () => {
+  await loadHistory();
+  showView('history');
 });
 
 // ── Init ──────────────────────────────────────────────────────────────────────

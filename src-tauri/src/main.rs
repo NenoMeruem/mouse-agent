@@ -624,12 +624,44 @@ fn main() {
                 window.set_focus().ok();
             }
 
-            // System tray — load the template icon (white PNG, transparent bg)
+            // System tray menu & icon — load the template icon (white PNG, transparent bg)
+            use tauri::menu::{Menu, MenuItem};
             use tauri::tray::{TrayIconBuilder, TrayIconEvent};
+
+            let show_i = MenuItem::with_id(app, "show", "Show / Toggle Promptly", true, None::<&str>)?;
+            let history_i = MenuItem::with_id(app, "history", "Show History", true, None::<&str>)?;
+            let quit_i = MenuItem::with_id(app, "quit", "Force Quit", true, None::<&str>)?;
+
+            let tray_menu = Menu::with_items(app, &[&show_i, &history_i, &quit_i])?;
 
             let mut tray_builder = TrayIconBuilder::new()
                 .tooltip("Promptly")
-                .icon(tauri::include_image!("icons/trayTemplate.png"));
+                .icon(tauri::include_image!("icons/trayTemplate.png"))
+                .menu(&tray_menu)
+                .on_menu_event(|app, event| match event.id.as_ref() {
+                    "show" => {
+                        if let Some(window) = app.get_webview_window("overlay") {
+                            let visible = window.is_visible().unwrap_or(false);
+                            if visible {
+                                window.hide().ok();
+                            } else {
+                                window.show().ok();
+                                window.set_focus().ok();
+                            }
+                        }
+                    }
+                    "history" => {
+                        if let Some(window) = app.get_webview_window("overlay") {
+                            window.emit("open-history", ()).ok();
+                            window.show().ok();
+                            window.set_focus().ok();
+                        }
+                    }
+                    "quit" => {
+                        app.exit(0);
+                    }
+                    _ => {}
+                });
 
             // Tell macOS to treat this as a template image (auto adapts to dark/light mode)
             #[cfg(target_os = "macos")]
@@ -637,11 +669,16 @@ fn main() {
 
             tray_builder
                 .on_tray_icon_event(|tray, event| {
-                    if let TrayIconEvent::Click { .. } = event {
+                    if let TrayIconEvent::Click { button: tauri::tray::MouseButton::Left, button_state: tauri::tray::MouseButtonState::Up, .. } = event {
                         let app = tray.app_handle();
                         if let Some(window) = app.get_webview_window("overlay") {
-                            window.show().ok();
-                            window.set_focus().ok();
+                            let visible = window.is_visible().unwrap_or(false);
+                            if visible {
+                                window.hide().ok();
+                            } else {
+                                window.show().ok();
+                                window.set_focus().ok();
+                            }
                         }
                     }
                 })
