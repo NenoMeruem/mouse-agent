@@ -7,56 +7,60 @@ on:
     branches: [main]
 
 jobs:
+  # ── Rust / Tauri checks ───────────────────────────────────────────────────────
   test:
-    runs-on: macos-latest
-    steps:
-      - uses: actions/checkout@v4
-
-      - uses: actions/setup-go@v5
-        with:
-          go-version: '1.24'
-          cache: true
-
-      - name: Run tests
-        run: go test ./...
-
-      - name: Vet
-        run: go vet ./...
-
-  build:
-    needs: test
     strategy:
       fail-fast: false
       matrix:
         include:
           - os: macos-latest
-            output: prompt-agent-darwin
-          - os: ubuntu-latest
-            output: prompt-agent-linux
+          - os: ubuntu-22.04
           - os: windows-latest
-            output: prompt-agent-windows.exe
     runs-on: ${{ matrix.os }}
+
     steps:
       - uses: actions/checkout@v4
 
-      - uses: actions/setup-go@v5
+      # Cache Rust/Cargo dependencies for faster builds
+      - name: Cache Cargo registry
+        uses: actions/cache@v4
         with:
-          go-version: '1.24'
-          cache: true
+          path: |
+            ~/.cargo/registry
+            ~/.cargo/git
+            src-tauri/target
+          key: ${{ runner.os }}-cargo-${{ hashFiles('**/Cargo.lock') }}
+          restore-keys: |
+            ${{ runner.os }}-cargo-
 
-      - name: Build (Unix)
-        if: runner.os != 'Windows'
-        run: go build -o ${{ matrix.output }} ./cmd/prompt-agent
-
-      - name: Build (Windows)
-        if: runner.os == 'Windows'
-        run: go build -o ${{ matrix.output }} ./cmd/prompt-agent
-        env:
-          CGO_ENABLED: '0'
-
-      - name: Upload artifact
-        uses: actions/upload-artifact@v4
+      # Rust stable toolchain (auto-installed via rust-toolchain or default)
+      - name: Setup Rust
+        uses: dtolnay/rust-toolchain@stable
         with:
-          name: ${{ matrix.output }}
-          path: ${{ matrix.output }}
-          retention-days: 7
+          components: clippy, rustfmt
+
+      # Linux requires WebKit2GTK & other system deps for Tauri
+      - name: Install Linux system dependencies
+        if: runner.os == 'Linux'
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y \
+            libwebkit2gtk-4.1-dev \
+            libappindicator3-dev \
+            librsvg2-dev \
+            patchelf
+
+      # Format check
+      - name: Check formatting (rustfmt)
+        working-directory: src-tauri
+        run: cargo fmt --all -- --check
+
+      # Lint
+      - name: Clippy lint
+        working-directory: src-tauri
+        run: cargo clippy --all-targets -- -D warnings
+
+      # Unit tests
+      - name: Run tests
+        working-directory: src-tauri
+        run: cargo test --all

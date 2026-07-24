@@ -1,29 +1,59 @@
-.PHONY: dev-tauri build-tauri test-rust test clean
+.PHONY: dev build build-debug test lint fmt clean
 
 # ─────────────────────────────────────────────────────────────────────────────
-# Rust / Tauri commands (Go sidecar has been removed — all logic is in Rust now)
+# Development
 # ─────────────────────────────────────────────────────────────────────────────
 
-# Run Tauri in development mode
-dev-tauri:
+# Run Tauri in development mode (hot-reload)
+dev:
 	cd src-tauri && cargo tauri dev
 
-# Build a production .app + .dmg (macOS)
-build-tauri:
+# ─────────────────────────────────────────────────────────────────────────────
+# Build (native — runs on whichever OS you are currently on)
+#
+#   macOS   → src-tauri/target/release/bundle/macos/Promptly.app
+#             src-tauri/target/release/bundle/dmg/Promptly_*.dmg
+#
+#   Linux   → src-tauri/target/release/bundle/deb/promptly_*.deb
+#             src-tauri/target/release/bundle/appimage/promptly_*.AppImage
+#
+#   Windows → src-tauri/target/release/bundle/nsis/Promptly_*-setup.exe
+#             src-tauri/target/release/bundle/msi/Promptly_*.msi
+#
+# NOTE: Tauri does NOT support cross-compilation across different OSes.
+#       Use GitHub Actions (release.yml) to produce multi-platform releases.
+# ─────────────────────────────────────────────────────────────────────────────
+
+build:
 	@mkdir -p dist
 	cd src-tauri && cargo tauri build
 	@echo ""
-	@echo "✅ App:  src-tauri/target/release/bundle/macos/Promptly.app"
-	@echo "✅ DMG:  src-tauri/target/release/bundle/dmg/Promptly_"*".dmg"
+	@echo "✅ Build complete — check src-tauri/target/release/bundle/"
 
-# Run Rust unit tests (all modules: models, config, prompt, storage, llm)
-test-rust:
-	cd src-tauri && cargo test
+# Debug build (skips bundle, faster iteration)
+build-debug:
+	cd src-tauri && cargo build
 
-# Run all tests
-test: test-rust
+# ─────────────────────────────────────────────────────────────────────────────
+# Quality checks
+# ─────────────────────────────────────────────────────────────────────────────
 
-# Clean Rust build artifacts
+# Run Rust unit tests
+test:
+	cd src-tauri && cargo test --all
+
+# Lint (Clippy)
+lint:
+	cd src-tauri && cargo clippy --all-targets -- -D warnings
+
+# Format check
+fmt:
+	cd src-tauri && cargo fmt --all -- --check
+
+# ─────────────────────────────────────────────────────────────────────────────
+# Cleanup
+# ─────────────────────────────────────────────────────────────────────────────
+
 clean:
 	cd src-tauri && cargo clean
 	rm -rf dist/
