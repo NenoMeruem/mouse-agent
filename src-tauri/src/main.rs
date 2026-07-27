@@ -80,6 +80,7 @@ fn build_llm_manager(cfg: &AppConfig) -> LlmManager {
 /// Run a recipe: build the prompt from selection + variables, call LLM,
 /// stream chunks back to the WebView as `chunk` / `error` / `done` events.
 #[tauri::command]
+#[allow(clippy::too_many_arguments)]
 async fn run_recipe(
     app: AppHandle,
     state: State<'_, AppState>,
@@ -286,6 +287,7 @@ fn list_recipes(state: State<'_, AppState>) -> Result<String, String> {
 
 /// Save (create) a new recipe.
 #[tauri::command]
+#[allow(clippy::too_many_arguments)]
 fn save_recipe(
     state: State<'_, AppState>,
     id: String,
@@ -324,6 +326,7 @@ fn save_recipe(
 
 /// Update an existing recipe.
 #[tauri::command]
+#[allow(clippy::too_many_arguments)]
 fn update_recipe(
     state: State<'_, AppState>,
     id: String,

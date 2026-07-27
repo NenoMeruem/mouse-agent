@@ -1,318 +1,170 @@
-# Prompt Agent
+# Promptly
 
 > **Your AI, one keystroke away.**
 
-**Prompt Agent** is a blazing-fast desktop overlay that lets you run AI on anything — just copy text, press a hotkey, and get results in seconds. No browser tabs, no context switching, no wasted time.
+**Promptly** is a blazing-fast, privacy-first desktop overlay app that lets you run AI prompts on anything — just copy text, press a hotkey, and stream results in seconds. Built natively with **Tauri v2** and **Rust**, it lives seamlessly on top of your desktop without heavy electron bloat or constant tab switching.
 
 ---
 
-### Stop switching tabs. Start getting answers.
+### Key Features
 
-Every day you copy text, switch to ChatGPT, paste it, wait, copy back. Over and over.
-
-**Prompt Agent kills that workflow dead.**
-
-Press `Alt+Space` from anywhere on your screen — a sleek overlay appears, your clipboard is already loaded, and your AI recipes are one click away. Pick a recipe, hit Run, and stream results in real time — all without leaving what you're doing.
-
----
-
-### Built for people who actually use AI
-
-- **Explain** code you just copied from Stack Overflow
-- **Summarize** a wall of documentation before reading it
-- **Rephrase** your email to sound more professional
-- **Review** a pull request while staying in your IDE
-- **Translate** on the fly — Vietnamese, English, whatever you need
+- ⚡ **Instant Desktop Overlay**: Press `Alt+Space` from any application — a sleek, floating UI appears instantly.
+- 📋 **Clipboard-Aware**: Automatically captures clipboard text and injects it into template placeholders (`{{selection}}`).
+- 🔁 **Real-Time LLM Streaming**: Stream responses chunk-by-chunk from **Google Gemini**, **OpenAI**, or **Anthropic Claude**.
+- 🎛 **Dynamic Recipes & Parameters**: Create custom prompt templates with configurable parameters (`Style / Tone`, `Length`, `Complexity`).
+- 💬 **Multi-Turn Chat**: Follow up on AI outputs with continuous multi-turn chat directly in the overlay.
+- ⚙️ **Flexible Engine Management**: Configure custom LLM providers, model names, API keys, and environment variable fallbacks (`env:VAR_NAME`).
+- 🌗 **Themes & Dark Mode**: Select between built-in themes (*Claude*, *Forest*, *Ocean*, *Lavender*) with full Dark Mode support.
+- 🔔 **System Tray Integration**: Quietly runs in your system tray with quick-toggle, history viewer, and quit controls.
+- 💾 **Local-First & Privacy-Focused**: Stores all data locally in SQLite (`~/.promptly/prompts.db`) and YAML config (`~/.promptly/config.yaml`). No tracking, no subscription.
+- 📦 **Import & Export**: Backup or restore your prompt recipes and engine configurations via CSV or JSON.
 
 ---
 
-### Your recipes, your rules
+## Project Structure
 
-Create your own **AI recipes** — reusable prompt templates tailored to exactly how you work. Give them a name, pick your tone, length, and complexity. Store them, reorder them, share them.
-
-Think of it as keyboard shortcuts, but for AI.
+```
+prompt-builder-agent/
+├── src-tauri/             # Rust Backend (Tauri v2)
+│   ├── src/
+│   │   ├── main.rs        # Main entrypoint & Tauri command handlers
+│   │   ├── config.rs      # YAML configuration loader & engine manager
+│   │   ├── storage.rs     # SQLite database migrations & queries
+│   │   ├── prompt.rs      # Template engine & parameter injection
+│   │   ├── models.rs      # Data models & serialization
+│   │   └── llm/           # Provider implementations (Gemini, OpenAI, Claude)
+│   ├── Cargo.toml         # Rust dependencies & package metadata
+│   └── tauri.conf.json    # Tauri app window & bundle configuration
+├── ui/                    # Frontend WebApp (Vanilla HTML/CSS/JS)
+│   ├── index.html         # Main overlay markup & settings panels
+│   ├── style.css          # Glassmorphism UI, themes & layout styles
+│   └── main.js            # Client UI state & Tauri IPC bridge
+├── pkg/                   # Go data model references
+├── Makefile               # Build & development task shortcuts
+└── README.md              # Project documentation
+```
 
 ---
 
-### Privacy-first, local-first
+## Requirements
 
-- Your API key, your data, your control
-- Connects directly to **Gemini, OpenAI, or Claude** — no middleman
-- Everything stored locally in `~/.prompt-agent/`
-- No subscription. No cloud sync. No tracking.
+- **Rust**: 1.75+ ([install via rustup](https://rustup.rs/))
+- **Node.js / npm**: 18+ (for Tauri CLI tooling)
+- **Tauri CLI**: `cargo install tauri-cli` or `npx @tauri-apps/cli`
 
 ---
 
-### Works the way you work
+## Getting Started
 
-| | |
+### Development Mode
+
+Run the app with hot-reloading for both backend and frontend:
+
+```bash
+make dev
+```
+*(Runs `cd src-tauri && cargo tauri dev` under the hood)*
+
+### Building for Release
+
+Generate standalone native installers (macOS `.dmg`/`.app`, Linux `.AppImage`/`.deb`, Windows `.exe`/`.msi`):
+
+```bash
+make build
+```
+*(Artifacts will be placed in `src-tauri/target/release/bundle/`)*
+
+### Quick Commands
+
+| Command | Description |
 |---|---|
-| ⚡ **Instant overlay** | One hotkey, no loading screen |
-| 📋 **Clipboard-aware** | Auto-reads what you just copied |
-| 🔁 **Real-time streaming** | See responses as they generate |
-| 🎛 **Customizable hotkey** | Change the trigger to whatever feels natural |
-| 🗂 **Run history** | Every result saved and searchable |
-| 🖥 **macOS + Linux** | Native app, zero Electron bloat |
+| `make dev` | Run app in development mode with live reload |
+| `make build` | Compile release production build & installer bundle |
+| `make build-debug` | Compile fast unoptimized debug binary |
+| `make test` | Execute backend Rust unit test suite |
+| `make lint` | Run Clippy linter checks |
+| `make fmt` | Check code formatting adherence |
+| `make clean` | Clean target directory and build artifacts |
 
 ---
-
-## Installation
-
-### Build from source
-
-Requires Go 1.24+.
-
-```bash
-git clone <repo>
-cd prompt-builder-agent
-go build -o prompt-agent ./cmd/prompt-agent
-```
-
-### Tauri app (optional)
-
-Requires Rust + `cargo-tauri`.
-
-```bash
-make build-sidecar   # builds Go binary and copies it to src-tauri/binaries/
-make dev-tauri       # launch Tauri in dev mode
-```
-
-## Quick start
-
-```bash
-# 1. Create config and seed default recipes
-./prompt-agent init
-
-# 2. Set your API key
-export GEMINI_API_KEY="your-key-here"
-
-# 3. Copy some text to clipboard, then run a recipe
-./prompt-agent run explain
-```
-
-## Commands
-
-### `init`
-
-Creates `~/.prompt-agent/config.yaml` and seeds 6 default recipes into the SQLite store.
-
-```bash
-./prompt-agent init
-```
-
-### `run <recipe-id>`
-
-Runs a recipe. By default reads selection from clipboard.
-
-```bash
-./prompt-agent run explain
-./prompt-agent run summarize --length short
-./prompt-agent run rephrase --tone casual --complexity simple
-./prompt-agent run fix-code --engine openai
-./prompt-agent run explain --dry-run        # preview prompt, no API call
-./prompt-agent run explain --edit           # open editor before sending
-./prompt-agent run explain --raw            # plain output (used by Tauri)
-echo "some text" | ./prompt-agent run explain --no-select  # read from stdin
-```
-
-**Flags:**
-
-| Flag | Description |
-|---|---|
-| `--engine` | Override recipe's engine (`gemini`, `openai`, `claude`) |
-| `--tone` | `professional`, `casual`, `concise` |
-| `--length` | `short`, `medium`, `long` |
-| `--complexity` | `simple`, `normal`, `technical` |
-| `--no-select` | Skip clipboard; read from stdin instead |
-| `--raw` | Plain stdout, no formatting decorators |
-| `--dry-run` | Preview final prompt without calling the API |
-| `--edit` | Open prompt in TUI editor before sending |
-
-### `prompt` — manage recipes
-
-```bash
-./prompt-agent prompt list                  # table view
-./prompt-agent prompt list --output json    # JSON (used by Tauri)
-./prompt-agent prompt show <id>
-./prompt-agent prompt add                   # interactive mode
-./prompt-agent prompt add --id my-recipe --template "Summarize: {{selection}}" --engine gemini
-./prompt-agent prompt edit <id>             # opens $EDITOR
-./prompt-agent prompt update <id> --name "New Name"
-./prompt-agent prompt search <query>
-./prompt-agent prompt delete <id>
-./prompt-agent prompt reorder <id1> <id2> ...
-```
-
-### `history` — run history
-
-```bash
-./prompt-agent history                      # last 50 runs
-./prompt-agent history --limit 20 --prompt explain
-./prompt-agent history show <id-prefix>     # full input + prompt + response
-./prompt-agent history search <query>
-./prompt-agent history clear --before 30d
-./prompt-agent history clear --all
-```
-
-### `config` — configuration
-
-```bash
-./prompt-agent config verify                        # check which engines are configured
-./prompt-agent config get-engines                   # list engine configs as JSON
-./prompt-agent config set-engine gemini \
-    --api-key env:GEMINI_API_KEY \
-    --model gemini-2.5-flash-lite \
-    --name "Gemini Flash"                           # set display name
-./prompt-agent config delete-engine <id>
-./prompt-agent config ping-engine gemini            # test API key + quota
-./prompt-agent config get-hotkey                    # print current app trigger hotkey
-./prompt-agent config set-hotkey "Ctrl+Shift+Space" # change app trigger hotkey
-```
-
-### `daemon` — CLI hotkey trigger (optional)
-
-```bash
-./prompt-agent daemon          # start hotkey listener (reads config)
-./prompt-agent daemon setup    # generate skhd / xbindkeys / AutoHotkey config
-```
-
-### Other
-
-```bash
-./prompt-agent version
-```
 
 ## Configuration
 
-File: `~/.prompt-agent/config.yaml`
+Settings are automatically saved in `~/.promptly/config.yaml`:
 
 ```yaml
-app:
-  hotkey: "Alt+Space"                      # global shortcut to show/hide the overlay
+hotkey: "Alt+Space"                   # Global hotkey trigger
 
 engines:
-  openai:
-    name: "GPT-4o"                         # display name (optional)
-    api_key: "sk-your-key-here"            # or use env: prefix (see below)
-    model: "gpt-4-mini"
-  gemini:
-    name: "Gemini Flash"
-    api_key: env:GEMINI_API_KEY            # resolved from $GEMINI_API_KEY at runtime
+  gemini-flash:
+    provider: "gemini"
+    name: "Gemini Flash"              # Header display name
+    api_key: env:GEMINI_API_KEY       # Environment variable fallback
     model: "gemini-2.5-flash-lite"
-  claude:
+  openai-main:
+    provider: "openai"
+    name: "GPT-4o Mini"
+    api_key: "sk-your-key-here"
+    model: "gpt-4o-mini"
+  claude-sonnet:
+    provider: "claude"
     name: "Claude Sonnet"
     api_key: env:ANTHROPIC_API_KEY
     model: "claude-sonnet-4-6"
+
 ui:
-  output: "stdout"                         # or "tui" for Bubble Tea renderer
-selection:
-  provider: "auto"                         # auto, macos, linux, windows
-  fail_on_empty_selection: false
-  trim_whitespace: true
+  output: "stdout"
 ```
 
-**`app.hotkey`:** global shortcut used by the Tauri overlay to show/hide the window. Configurable via **Settings → Hotkeys** in the UI, or via CLI (`config set-hotkey`). Default: `Alt+Space`. Takes effect immediately without restarting the app.
+### API Key Resolution Order
+1. Environment variable (`GEMINI_API_KEY`, `OPENAI_API_KEY`, `ANTHROPIC_API_KEY`)
+2. `api_key` field in `config.yaml`
+3. `env:VAR_NAME` indirection in `config.yaml`
 
-**Engine `name` field:** controls what is shown in the response header (`🚀 Streaming from Gemini Flash...`), the TUI editor badge, and dry-run output. Falls back to built-in display names (`openai` → `OpenAI`, `gemini` → `Google Gemini`, `claude` → `Claude`) if not set.
+---
 
-**API key resolution order** (highest priority first):
-1. Environment variable (`OPENAI_API_KEY`, `GEMINI_API_KEY`, `ANTHROPIC_API_KEY`)
-2. Config file value
-3. Config file with `env:VARNAME` indirection
+## Default Recipes
 
-## Default recipes
+On first launch, Promptly automatically seeds SQLite with built-in recipes:
 
-Seeded on `init`:
+| ID | Recipe Name | Template & Usage | Supported Parameters |
+|---|---|---|---|
+| `explain` | Explain | Explains text or code clearly | `Tone`, `Length` |
+| `summarize` | Summarize | Summarizes key points concisely | `Length` |
+| `rephrase` | Rephrase | Rewrites text into desired tone/style | `Tone`, `Complexity` |
+| `fix-code` | Fix Code | Fixes bugs and improves code quality | — |
+| `translate-vi` | Translate → VI | Translates content to Vietnamese | — |
+| `review-pr` | Review PR | Analyzes code changes & suggests improvements | `Complexity` |
 
-| ID | Name | Supported params |
-|---|---|---|
-| `explain` | Explain | `tone`, `length` |
-| `summarize` | Summarize | `length` |
-| `rephrase` | Rephrase | `tone`, `complexity` |
-| `fix-code` | Fix Code | — |
-| `translate-vi` | Translate → VI | — |
-| `review-pr` | Review PR | `complexity` |
+---
 
-## Template syntax
+## Global Hotkey & Window Managers
 
-Templates use `{{variable}}` placeholders. `selection` is the reserved variable populated from clipboard or stdin.
+### Changing the Hotkey
+Open **Promptly Settings → Hotkeys → Change**, press your desired key combination, and save. It applies instantly without restarting.
 
-```
-Fix any bugs in the following code:\n\n{{selection}}
-```
+### Linux / Wayland & Tiling Window Managers
+Standard global hotkey hooks might be blocked on Wayland (e.g. Hyprland, Sway, Swaylock). Promptly includes a single-instance listener that allows keybindings from your Window Manager to toggle the overlay seamlessly:
 
-Variables not provided by clipboard are prompted interactively, or can be set via `PROMPT_<VARNAME>` environment variables.
+1. Keep Promptly running in the background.
+2. Bind a key in your window manager to launch the compiled binary (e.g. `promptly`).
+3. Executing the binary again signals the running process to toggle window visibility and capture updated clipboard content.
 
-## Build
+**Example configurations:**
+- **Hyprland (`hyprland.conf`):** `bind = ALT, space, exec, promptly`
+- **Sway (`~/.config/sway/config`):** `bindsym Mod1+space exec promptly`
+- **i3 (`~/.config/i3/config`):** `bindsym Mod1+space exec promptly`
 
-```bash
-make build           # current platform binary → ./prompt-agent
-make build-windows   # cross-compile → dist/prompt-agent-windows-amd64.exe + arm64.exe
-make build-all       # all platforms → dist/
-make release         # macOS .app + .dmg (Tauri) + Windows .exe → dist/
-make test            # go test ./...
-make clean           # remove all build artifacts
-```
+---
 
-> **Note:** macOS builds require CGO (`golang.design/x/hotkey` uses Carbon API). Windows and Linux are cross-compiled with `CGO_ENABLED=0` — no extra toolchain needed.
+## System Storage & Logs
 
-## Tauri overlay hotkey
+- **SQLite Database**: `~/.promptly/prompts.db` (stores recipes, variable rules, and execution run history)
+- **YAML Config**: `~/.promptly/config.yaml` (engine settings, hotkey triggers, UI options)
 
-Press the global shortcut (default `Alt+Space`) from anywhere on your system to show/hide the overlay. The app reads your clipboard automatically when it opens.
+---
 
-**Change the hotkey:** open the overlay → Settings → Hotkeys → click **Change** → press your new key combination. Saved to `config.yaml` and applied instantly.
+## License
 
-Or via CLI:
-```bash
-./promptly config set-hotkey "Ctrl+Shift+Space"
-```
+MIT License. Built for speed, efficiency, and personal productivity.
 
-> [!NOTE]
-> **Linux / Wayland & Window Manager users (Arch Linux, Sway, Hyprland, etc.):**
-> Standard global hotkey interceptors do not function under Wayland. However, the app includes a single-instance plugin that resolves this:
-> 1. Start the Tauri app in the background (e.g. run `./src-tauri/target/debug/promptly` or the production build).
-> 2. Bind your preferred hotkey at your OS or Window Manager level to execute the `promptly` binary path.
-> 3. Pressing the hotkey runs `promptly` again. The new process will notify the running background process, toggling the overlay window instantly.
-> 
-> **Example configurations:**
-> - **Hyprland (`hyprland.conf`):** `bind = ALT, space, exec, /path/to/promptly`
-> - **Sway (`~/.config/sway/config`) or i3 (`~/.config/i3/config`):** `bindsym Mod1+space exec /path/to/promptly`
-> - **sxhkd (`~/.config/sxhkd/sxhkdrc`):**
->   ```
->   alt + space
->       /path/to/promptly
->   ```
-> *Tip: You can symlink your compiled Tauri binary to your system PATH (e.g., `sudo ln -sf $(pwd)/src-tauri/target/debug/promptly /usr/local/bin/promptly`) to make configuration cleaner.*
-
-## CLI hotkey daemon (optional)
-
-A separate daemon that runs recipes directly from hotkeys without opening the overlay UI.
-
-**macOS:** requires Accessibility permission (`System Preferences → Privacy & Security → Accessibility`).
-
-**Linux:** run `./promptly daemon setup` to generate the correct configuration. The tool will automatically detect your display server (Wayland vs X11), scan for your installed terminal emulator (Alacritty, Kitty, Konsole, GNOME Terminal, etc.) to use appropriate window holding commands, and output:
-- **X11:** Writes configured hotkeys to `~/.xbindkeysrc`.
-- **Wayland / Window Managers:** Outputs ready-to-copy configuration blocks for Hyprland, Sway, i3, and sxhkd.
-
-**macOS alternative:** generate an `skhd` config with `daemon setup` (requires `brew install skhd`).
-
-**Windows:** generate an AutoHotkey v2 script with `daemon setup` (requires [AutoHotkey](https://www.autohotkey.com/)).
-
-## Clipboard requirements
-
-- **macOS:** built-in `pbpaste`
-- **Linux X11:** `xclip` or `xsel` (`sudo apt install xclip` or `sudo pacman -S xclip`)
-- **Linux Wayland:** `wl-paste` (`sudo apt install wl-clipboard` or `sudo pacman -S wl-clipboard`)
-- **Windows:** PowerShell `Get-Clipboard` (built-in)
-
-## Storage & Logging
-
-All data is stored in `~/.prompt-agent/`:
-
-| File | Description |
-|---|---|
-| `prompts.db` | SQLite database — recipes + run history |
-| `config.yaml` | Engine configs, UI settings, hotkeys |
-| `prompt-agent.log` | Structured log file (errors, warnings, run traces) |
-
-If a legacy `prompts.json` exists from an older version, it is auto-migrated on first run and renamed to `prompts.json.bak`.

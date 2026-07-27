@@ -162,10 +162,8 @@ impl LlmClient for OpenAiClient {
                         if let Ok(sse) = serde_json::from_str::<StreamResponse>(data) {
                             for choice in sse.choices {
                                 if let Some(text) = choice.delta.content {
-                                    if !text.is_empty() {
-                                        if tx.send(Chunk { text, done: false, error: None }).await.is_err() {
-                                            return;
-                                        }
+                                    if !text.is_empty() && tx.send(Chunk { text, done: false, error: None }).await.is_err() {
+                                        return;
                                     }
                                 }
                             }

@@ -150,10 +150,8 @@ impl LlmClient for ClaudeClient {
                                     if let Some(delta) = event.delta {
                                         if delta.delta_type.as_deref() == Some("text_delta") {
                                             if let Some(text) = delta.text {
-                                                if !text.is_empty() {
-                                                    if tx.send(Chunk { text, done: false, error: None }).await.is_err() {
-                                                        break 'outer;
-                                                    }
+                                                if !text.is_empty() && tx.send(Chunk { text, done: false, error: None }).await.is_err() {
+                                                    break 'outer;
                                                 }
                                             }
                                         }

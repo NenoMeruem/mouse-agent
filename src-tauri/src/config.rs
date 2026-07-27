@@ -338,8 +338,10 @@ mod tests {
 
     #[test]
     fn get_hotkey_returns_custom_value() {
-        let mut cfg = AppConfig::default();
-        cfg.hotkey = Some("Ctrl+Shift+P".into());
+        let cfg = AppConfig {
+            hotkey: Some("Ctrl+Shift+P".into()),
+            ..Default::default()
+        };
         assert_eq!(get_hotkey(&cfg), "Ctrl+Shift+P");
     }
 

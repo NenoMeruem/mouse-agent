@@ -163,7 +163,6 @@ impl LlmClient for GeminiClient {
         // Stream ends when a chunk has candidates[].finishReason set (e.g. "STOP")
         let mut stream = resp.bytes_stream();
         let mut buf = String::new();
-        let mut finished = false;
 
         'outer: while let Some(chunk_result) = stream.next().await {
             match chunk_result {
@@ -196,7 +195,6 @@ impl LlmClient for GeminiClient {
 
                         // Gemini does NOT send [DONE] — end is signalled by finishReason
                         if data == "[DONE]" {
-                            finished = true;
                             break 'outer;
                         }
 
@@ -219,10 +217,8 @@ impl LlmClient for GeminiClient {
                                     if let Some(content) = candidate.content {
                                         for part in content.parts.unwrap_or_default() {
                                             if let Some(text) = part.text {
-                                                if !text.is_empty() {
-                                                    if tx.send(Chunk { text, done: false, error: None }).await.is_err() {
-                                                        return;
-                                                    }
+                                                if !text.is_empty() && tx.send(Chunk { text, done: false, error: None }).await.is_err() {
+                                                    return;
                                                 }
                                             }
                                         }
@@ -230,7 +226,6 @@ impl LlmClient for GeminiClient {
 
                                     // finishReason present → stream complete
                                     if candidate.finish_reason.is_some() {
-                                        finished = true;
                                         break 'outer;
                                     }
                                 }
