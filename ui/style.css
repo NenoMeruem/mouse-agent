@@ -123,7 +123,54 @@ body {
 
 .header-left { display: flex; align-items: center; gap: 8px; }
 
+/* ── App Logo ─────────────────────────────────────────────────────────────── */
+.app-logo {
+  width: 28px;
+  height: 28px;
+  border-radius: 8px;
+  background: var(--accent-light);
+  color: #fff;
+  font-size: 14px;
+  font-weight: 700;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  letter-spacing: -0.01em;
+  flex-shrink: 0;
+  user-select: none;
+}
+
+/* ── Breadcrumb ───────────────────────────────────────────────────────────── */
+.breadcrumb {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  -webkit-app-region: no-drag;
+}
+
 .app-title { font-size: 13.5px; font-weight: 700; color: var(--text-1); letter-spacing: -0.01em; }
+
+.breadcrumb-sep {
+  display: flex;
+  align-items: center;
+  color: var(--text-3);
+  flex-shrink: 0;
+}
+.breadcrumb-sep svg {
+  width: 6px;
+  height: 10px;
+}
+.breadcrumb-page {
+  font-size: 13px;
+  font-weight: 600;
+  color: var(--text-2);
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  max-width: 160px;
+}
+.breadcrumb-page:empty { display: none; }
+.breadcrumb-sep:has(+ .breadcrumb-page:empty) { display: none; }
 
 .header-right { display: flex; align-items: center; gap: 2px; -webkit-app-region: no-drag; }
 

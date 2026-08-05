@@ -39,6 +39,7 @@ const formError       = document.getElementById('form-error');
 const recipeListEl    = document.getElementById('recipe-list');
 const inputArea       = document.getElementById('input-area');
 const instructionText = document.getElementById('instruction-text');
+const breadcrumbPage  = document.getElementById('breadcrumb-page');
 const paramsSection   = document.getElementById('params-section');
 const viewInput       = document.getElementById('view-input');
 const viewOutput      = document.getElementById('view-output');
@@ -65,18 +66,37 @@ function inlineMd(text) {
   return text;
 }
 
-function renderMarkdown(raw) {
+function renderMarkdown(raw, _depth = 0) {
+  // Guard against infinite recursion (e.g. deeply nested blockquotes)
+  if (_depth > 4) return escapeHtml(raw);
+
   // Extract fenced code blocks to protect them from inline processing
+  // Uses a non-backtracking approach: split on ``` lines manually
   const fences = [];
-  let md = raw.replace(/^```([\w.-]*)\r?\n([\s\S]*?)^```/gm, (_, lang, code) => {
-    fences.push({ lang, code: code.replace(/\n$/, '') });
-    return `\x01F${fences.length - 1}\x01`;
-  });
-  // Handle unclosed fence (mid-stream): render as open code block
-  md = md.replace(/^```([\w.-]*)\r?\n([\s\S]*)$/m, (_, lang, code) => {
-    fences.push({ lang, code });
-    return `\x01F${fences.length - 1}\x01`;
-  });
+  const fenceLines = raw.split('\n');
+  const processedLines = [];
+  let inFence = false;
+  let fenceLang = '';
+  let fenceContent = [];
+  for (const fl of fenceLines) {
+    if (!inFence) {
+      const fm = fl.match(/^```([\w.-]*)$/);
+      if (fm) { inFence = true; fenceLang = fm[1]; fenceContent = []; }
+      else { processedLines.push(fl); }
+    } else {
+      if (fl === '```') {
+        fences.push({ lang: fenceLang, code: fenceContent.join('\n') });
+        processedLines.push(`\x01F${fences.length - 1}\x01`);
+        inFence = false;
+      } else { fenceContent.push(fl); }
+    }
+  }
+  // Handle unclosed fence at end of stream
+  if (inFence) {
+    fences.push({ lang: fenceLang, code: fenceContent.join('\n') });
+    processedLines.push(`\x01F${fences.length - 1}\x01`);
+  }
+  let md = processedLines.join('\n');
 
   const lines  = md.split('\n');
   const out    = [];
@@ -109,11 +129,11 @@ function renderMarkdown(raw) {
       out.push('<hr class="md-hr">');
       i++; continue;
     }
-    // Blockquote
+    // Blockquote — use depth+1 to prevent infinite recursion
     if (line.startsWith('> ')) {
       const qlines = [];
       while (i < lines.length && lines[i].startsWith('> ')) { qlines.push(lines[i].slice(2)); i++; }
-      out.push(`<blockquote class="md-blockquote">${renderMarkdown(qlines.join('\n'))}</blockquote>`);
+      out.push(`<blockquote class="md-blockquote">${renderMarkdown(qlines.join('\n'), _depth + 1)}</blockquote>`);
       continue;
     }
     // Unordered list
@@ -388,6 +408,8 @@ function selectRecipe(recipe) {
   document.querySelectorAll('.recipe-item').forEach(el => {
     el.classList.toggle('active', el.dataset.id === recipe.id);
   });
+  // Update breadcrumb
+  if (breadcrumbPage) breadcrumbPage.textContent = recipe.name || '';
   // Show template content in instructions
   const tpl = recipe.template || recipe.description || '';
   instructionText.textContent = tpl ? `"${tpl}"` : 'No instructions';
@@ -1318,46 +1340,130 @@ function formatTimeAgo(dateStr) {
 function buildHistoryTurnEl(r, label) {
   const responseText = (r.response     || '').trim();
   const finalPrompt  = (r.final_prompt || '').trim();
-  const preview = responseText.slice(0, 100).replace(/\n+/g, ' ') || '(no response)';
+  const preview      = responseText.slice(0, 100).replace(/\n+/g, ' ') || '(no response)';
+
+  // Always escape dynamic values inserted via innerHTML
+  const safeRecipeId = escapeHtml(r.prompt_id || '—');
+  const safeEngine   = escapeHtml(r.engine    || '');
+  const safeTime     = escapeHtml(formatTimeAgo(r.created_at));
+  const safeLabel    = label ? escapeHtml(label) : '';
+
   const el = document.createElement('div');
   el.className = 'history-item';
-  el.innerHTML = `
-    <div class="history-item-header">
-      <span class="history-recipe">${r.prompt_id || '—'}</span>
-      ${label ? `<span class="history-turn-badge">${label}</span>` : ''}
-      <span class="history-engine">${r.engine || ''}</span>
-      <span class="history-time">${formatTimeAgo(r.created_at)}</span>
-    </div>
-    <div class="history-preview">${escapeHtml(preview)}</div>
-    <div class="history-detail">
-      ${finalPrompt ? `<div class="history-input-label">Prompt sent</div><div class="history-input-text">${escapeHtml(finalPrompt)}</div>` : ''}
-      <div class="history-response-header">
-        <span class="history-response-label">Response</span>
-        ${responseText ? `<button class="history-copy-btn" title="Copy response">Copy</button>` : ''}
-      </div>
-      <div class="history-response-text">${responseText ? renderMarkdown(responseText) : '<em>(empty)</em>'}</div>
-    </div>
+
+  // Build header
+  const header = document.createElement('div');
+  header.className = 'history-item-header';
+  header.innerHTML = `
+    <span class="history-recipe">${safeRecipeId}</span>
+    ${safeLabel ? `<span class="history-turn-badge">${safeLabel}</span>` : ''}
+    <span class="history-engine">${safeEngine}</span>
+    <span class="history-time">${safeTime}</span>
   `;
-  el.addEventListener('click', (e) => {
-    if (!e.target.closest('.history-copy-btn')) el.classList.toggle('expanded');
-  });
+
+  // Build preview
+  const previewEl = document.createElement('div');
+  previewEl.className = 'history-preview';
+  previewEl.textContent = preview;
+
+  // Build detail (hidden until expanded)
+  const detail = document.createElement('div');
+  detail.className = 'history-detail';
+
+  if (finalPrompt) {
+    const inputLabel = document.createElement('div');
+    inputLabel.className = 'history-input-label';
+    inputLabel.textContent = 'Prompt sent';
+
+    const inputText = document.createElement('div');
+    inputText.className = 'history-input-text';
+    inputText.textContent = finalPrompt;   // textContent = safe, no XSS
+
+    detail.appendChild(inputLabel);
+    detail.appendChild(inputText);
+  }
+
+  const responseHeader = document.createElement('div');
+  responseHeader.className = 'history-response-header';
+
+  const responseLabel = document.createElement('span');
+  responseLabel.className = 'history-response-label';
+  responseLabel.textContent = 'Response';
+  responseHeader.appendChild(responseLabel);
+
+  // Copy button — only created when there IS a response
+  let copyBtn = null;
   if (responseText) {
-    el.querySelector('.history-copy-btn').addEventListener('click', async (e) => {
+    copyBtn = document.createElement('button');
+    copyBtn.className = 'history-copy-btn';
+    copyBtn.title = 'Copy response';
+    copyBtn.textContent = 'Copy';
+    copyBtn.addEventListener('click', async (e) => {
       e.stopPropagation();
       await writeToClipboard(responseText);
-      const btn = e.currentTarget;
-      btn.textContent = '✓ Copied';
-      setTimeout(() => { btn.textContent = 'Copy'; }, 1800);
+      copyBtn.textContent = '✓ Copied';
+      setTimeout(() => { copyBtn.textContent = 'Copy'; }, 1800);
     });
+    responseHeader.appendChild(copyBtn);
   }
+
+  const responseText_el = document.createElement('div');
+  responseText_el.className = 'history-response-text';
+  let hasRenderedMarkdown = false;
+
+  if (!responseText) {
+    responseText_el.innerHTML = '<em>(empty)</em>';
+    hasRenderedMarkdown = true;
+  }
+
+  detail.appendChild(responseHeader);
+  detail.appendChild(responseText_el);
+
+  el.appendChild(header);
+  el.appendChild(previewEl);
+  el.appendChild(detail);
+
+  // Toggle expanded/collapsed.
+  // - Lazy render Markdown only when first expanding an item
+  // - Clicking header or preview always toggles.
+  // - Clicking INSIDE the detail area (text, links) when already expanded does nothing
+  // - Copy button always stops propagation itself, so it never reaches here.
+  el.addEventListener('click', (e) => {
+    const targetNode = e.target;
+    if (targetNode && typeof targetNode.closest === 'function' && targetNode.closest('.history-detail')) return;
+
+    const willExpand = !el.classList.contains('expanded');
+    if (willExpand && !hasRenderedMarkdown && responseText) {
+      console.log(`[History Log] Lazy rendering Markdown for record ${r.id || 'unknown'}`);
+      responseText_el.innerHTML = renderMarkdown(responseText);
+      hasRenderedMarkdown = true;
+    }
+
+    el.classList.toggle('expanded');
+  });
+
   return el;
 }
 
+
+// Helper: invoke with a timeout so a hung backend doesn't freeze the UI
+function invokeWithTimeout(cmd, args, ms = 8000) {
+  return Promise.race([
+    invoke(cmd, args),
+    new Promise((_, reject) =>
+      setTimeout(() => reject(new Error(`Command '${cmd}' timed out after ${ms}ms`)), ms)
+    ),
+  ]);
+}
+
 async function loadHistory() {
+  console.log('[History Log] Loading history requested...');
   historyListEl.innerHTML = '<p class="history-empty">Loading…</p>';
   try {
-    const json = await invoke('list_history');
+    const json = await invokeWithTimeout('list_history', {}, 8000);
     const records = JSON.parse(json) || [];
+    console.log(`[History Log] Received ${records.length} history records from backend`);
+
     if (records.length === 0) {
       historyListEl.innerHTML = '<p class="history-empty">No history yet.</p>';
       return;
@@ -1365,83 +1471,89 @@ async function loadHistory() {
     historyListEl.innerHTML = '';
 
     // Group records by session_id; records without a session go solo
-    const sessions = new Map();    // session_id → [records sorted by turn_index]
-    const solo     = [];           // records with no session_id
-
+    const sessions = new Map();
     for (const r of records) {
       const sid = r.session_id || '';
-      if (!sid) { solo.push(r); continue; }
+      if (!sid) continue;
       if (!sessions.has(sid)) sessions.set(sid, []);
       sessions.get(sid).push(r);
     }
-
-    // Sort each session's turns by turn_index ascending
     for (const turns of sessions.values()) {
       turns.sort((a, b) => (a.turn_index || 0) - (b.turn_index || 0));
     }
 
-    // Render sessions (newest first — records are already ordered by created_at DESC from API)
-    // Collect all groups ordered by the created_at of their first record in the raw list
+    // Build the ordered list of items to render
+    const renderQueue = [];
     const seenSessions = new Set();
     for (const r of records) {
       const sid = r.session_id || '';
-
       if (!sid) {
-        // Solo record
-        historyListEl.appendChild(buildHistoryTurnEl(r, null));
+        renderQueue.push({ type: 'solo', record: r });
         continue;
       }
-
       if (seenSessions.has(sid)) continue;
       seenSessions.add(sid);
-
       const turns = sessions.get(sid);
       if (turns.length === 1) {
-        // Single-turn session — render like a solo item
-        historyListEl.appendChild(buildHistoryTurnEl(turns[0], null));
-        continue;
+        renderQueue.push({ type: 'solo', record: turns[0] });
+      } else {
+        renderQueue.push({ type: 'thread', turns });
       }
-
-      // Multi-turn session — render as a collapsible thread
-      const thread = document.createElement('div');
-      thread.className = 'history-thread';
-
-      const threadHeader = document.createElement('div');
-      threadHeader.className = 'history-thread-header';
-      threadHeader.innerHTML = `
-        <span class="history-thread-icon">💬</span>
-        <span class="history-thread-label">${turns[0].prompt_id || 'Conversation'}</span>
-        <span class="history-thread-count">${turns.length} turns</span>
-        <span class="history-thread-time">${formatTimeAgo(turns[0].created_at)}</span>
-        <span class="history-thread-caret">›</span>
-      `;
-
-      const threadBody = document.createElement('div');
-      threadBody.className = 'history-thread-body';
-
-      for (const turn of turns) {
-        const label = turn.turn_index === 0 ? 'Initial' : `Follow-up ${turn.turn_index}`;
-        const turnEl = buildHistoryTurnEl(turn, label);
-        turnEl.classList.add('history-thread-turn');
-        threadBody.appendChild(turnEl);
-      }
-
-      threadHeader.addEventListener('click', () => {
-        thread.classList.toggle('expanded');
-      });
-
-      thread.appendChild(threadHeader);
-      thread.appendChild(threadBody);
-      historyListEl.appendChild(thread);
     }
+
+    // Render in small batches to avoid blocking the main thread
+    const BATCH = 5;
+    let idx = 0;
+    function renderBatch() {
+      const end = Math.min(idx + BATCH, renderQueue.length);
+      for (; idx < end; idx++) {
+        const item = renderQueue[idx];
+        if (item.type === 'solo') {
+          historyListEl.appendChild(buildHistoryTurnEl(item.record, null));
+        } else {
+          const { turns } = item;
+          const thread = document.createElement('div');
+          thread.className = 'history-thread';
+          const threadHeader = document.createElement('div');
+          threadHeader.className = 'history-thread-header';
+          threadHeader.innerHTML = `
+            <span class="history-thread-icon">💬</span>
+            <span class="history-thread-label">${escapeHtml(turns[0].prompt_id || 'Conversation')}</span>
+            <span class="history-thread-count">${turns.length} turns</span>
+            <span class="history-thread-time">${escapeHtml(formatTimeAgo(turns[0].created_at))}</span>
+            <span class="history-thread-caret">›</span>
+          `;
+          const threadBody = document.createElement('div');
+          threadBody.className = 'history-thread-body';
+          for (const turn of turns) {
+            const label = turn.turn_index === 0 ? 'Initial' : `Follow-up ${turn.turn_index}`;
+            const turnEl = buildHistoryTurnEl(turn, label);
+            turnEl.classList.add('history-thread-turn');
+            threadBody.appendChild(turnEl);
+          }
+          threadHeader.addEventListener('click', () => thread.classList.toggle('expanded'));
+          thread.appendChild(threadHeader);
+          thread.appendChild(threadBody);
+          historyListEl.appendChild(thread);
+        }
+      }
+      if (idx < renderQueue.length) {
+        setTimeout(renderBatch, 0);  // yield to browser between batches
+      } else {
+        console.log('[History Log] Batch rendering completed successfully');
+      }
+    }
+    renderBatch();
+
   } catch (err) {
-    historyListEl.innerHTML = `<p class="history-empty">${err}</p>`;
+    console.error('[History Log ERROR] Failed to load history:', err);
+    historyListEl.innerHTML = `<p class="history-empty">Error: ${err.message || err}</p>`;
   }
 }
 
 historyBtn.addEventListener('click', async () => {
-  await loadHistory();
-  showView('history');
+  showView('history');   // show immediately — don't await loadHistory first
+  loadHistory();
 });
 
 historyCloseBtn.addEventListener('click', () => showView('input'));
@@ -1473,9 +1585,9 @@ historyClearBtn.addEventListener('click', async () => {
 });
 
 // Listen for tray menu event to open history
-listen('open-history', async () => {
-  await loadHistory();
-  showView('history');
+listen('open-history', () => {
+  showView('history');   // show immediately
+  loadHistory();
 });
 
 // ── Init ──────────────────────────────────────────────────────────────────────

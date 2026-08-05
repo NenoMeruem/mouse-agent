@@ -21,7 +21,18 @@
     <!-- ── Header ── -->
     <div id="header" data-tauri-drag-region>
       <div class="header-left">
-        <span class="app-title">Promptly</span>
+        <!-- Logo icon -->
+        <div class="app-logo" aria-hidden="true">P</div>
+        <!-- Breadcrumb -->
+        <nav class="breadcrumb" aria-label="breadcrumb">
+          <span class="app-title">Promptly</span>
+          <span class="breadcrumb-sep" aria-hidden="true">
+            <svg viewBox="0 0 6 10" fill="none" xmlns="http://www.w3.org/2000/svg">
+              <path d="M1 1l4 4-4 4" stroke="currentColor" stroke-width="1.6" stroke-linecap="round" stroke-linejoin="round"/>
+            </svg>
+          </span>
+          <span class="breadcrumb-page" id="breadcrumb-page"></span>
+        </nav>
       </div>
       <div class="header-right">
         <button class="hbtn" title="Settings">
