@@ -29,7 +29,8 @@ use tokio::sync::mpsc;
 use uuid::Uuid;
 
 use llm::{
-    claude::ClaudeClient, gemini::GeminiClient, openai::OpenAiClient, LlmClient, Manager as LlmManager,
+    sidecar::SidecarClient,
+    LlmClient, Manager as LlmManager,
 };
 
 // ---------------------------------------------------------------------------
@@ -42,29 +43,28 @@ pub struct AppState {
 }
 
 // ---------------------------------------------------------------------------
-// LLM Manager builder — reads API keys, registers available engines
+// LLM Manager builder — routes requests through FastAPI + LangChain Sidecar
 // ---------------------------------------------------------------------------
 
 fn build_llm_manager(cfg: &AppConfig) -> LlmManager {
     let mut mgr = LlmManager::new();
+    let sidecar_url = "http://127.0.0.1:8000";
 
     // Iterate ALL engine entries — each has a unique ID but may share a provider.
-    // This allows multiple Gemini instances (e.g. "gemini-flash" + "gemini-pro").
     for (id, ec) in &cfg.engines {
         let provider = config::infer_provider(id, ec);
         let api_key  = get_engine_api_key(cfg, id);
-        if api_key.is_empty() {
-            continue;
-        }
-        let model   = get_engine_model(cfg, id);
-        let timeout = Duration::from_secs(get_engine_timeout_secs(cfg, id));
+        let model    = get_engine_model(cfg, id);
+        let timeout  = Duration::from_secs(get_engine_timeout_secs(cfg, id));
 
-        let client: Box<dyn LlmClient> = match provider.as_str() {
-            "gemini" => Box::new(GeminiClient::new(api_key, model, timeout)),
-            "openai" => Box::new(OpenAiClient::new(api_key, model, timeout)),
-            "claude" => Box::new(ClaudeClient::new(api_key, model, timeout)),
-            _ => continue,
-        };
+        // Connect via Python FastAPI LangChain Sidecar, passing api_key resolved from Rust
+        let client: Box<dyn LlmClient> = Box::new(SidecarClient::new(
+            sidecar_url,
+            provider,
+            model,
+            api_key,
+            timeout,
+        ));
 
         // Register with the entry's unique ID so run_recipe can look up by id
         mgr.register_id(id.clone(), client);
@@ -72,6 +72,8 @@ fn build_llm_manager(cfg: &AppConfig) -> LlmManager {
 
     mgr
 }
+
+
 
 // ---------------------------------------------------------------------------
 // Tauri Commands

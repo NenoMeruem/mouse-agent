@@ -29,3 +29,14 @@ src-tauri/binaries/
 # Claude Code local settings
 .claude/
 .specstory/*
+
+# Python & Sidecar
+__pycache__/
+*.py[cod]
+*$py.class
+*.env
+venv/
+.venv/
+.pytest_cache/
+sidecar/.env
+chroma_db/

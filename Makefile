@@ -1,12 +1,44 @@
-.PHONY: dev build build-debug test lint fmt clean
+.PHONY: dev dev-all dev-tauri sidecar-dev sidecar-install build build-debug test lint fmt clean
 
 # ─────────────────────────────────────────────────────────────────────────────
 # Development
 # ─────────────────────────────────────────────────────────────────────────────
 
-# Run Tauri in development mode (hot-reload)
+# Run BOTH Python LangChain Sidecar and Tauri App concurrently
 dev:
+	@if [ ! -d "sidecar/venv" ]; then \
+		echo "Creating virtual environment in sidecar/venv..."; \
+		python3 -m venv sidecar/venv && ./sidecar/venv/bin/pip install -r sidecar/requirements.txt; \
+	fi
+	@echo "🚀 Starting Python FastAPI Sidecar (Port 8000) & Tauri Overlay..."
+	@(trap 'kill 0' SIGINT SIGTERM EXIT; \
+		./sidecar/venv/bin/uvicorn sidecar.main:app --host 127.0.0.1 --port 8000 --reload & \
+		cd src-tauri && cargo tauri dev)
+
+# Alias for dev
+dev-all: dev
+
+# Run only Tauri app (assumes sidecar is running or optional)
+dev-tauri:
 	cd src-tauri && cargo tauri dev
+
+# Run only FastAPI LangChain sidecar server in foreground
+sidecar-dev:
+	@if [ ! -d "sidecar/venv" ]; then \
+		echo "Creating virtual environment in sidecar/venv..."; \
+		python3 -m venv sidecar/venv && ./sidecar/venv/bin/pip install -r sidecar/requirements.txt; \
+	fi
+	./sidecar/venv/bin/uvicorn sidecar.main:app --host 127.0.0.1 --port 8000 --reload
+
+# Install Python sidecar dependencies
+sidecar-install:
+	@if [ ! -d "sidecar/venv" ]; then \
+		python3 -m venv sidecar/venv; \
+	fi
+	./sidecar/venv/bin/pip install -r sidecar/requirements.txt
+
+
+
 
 # ─────────────────────────────────────────────────────────────────────────────
 # Build (native — runs on whichever OS you are currently on)

@@ -132,12 +132,14 @@ pub fn infer_provider(id: &str, ec: &EngineConfig) -> String {
     }
     // Legacy fallback: key IS the provider
     match id {
-        "gemini" | "openai" | "claude" => id.to_string(),
+        "gemini" | "openai" | "claude" | "sidecar" | "langchain" | "ollama" => id.to_string(),
         // Fuzzy match: starts with known provider name
         s if s.starts_with("gemini") => "gemini".to_string(),
         s if s.starts_with("openai") || s.starts_with("gpt") => "openai".to_string(),
         s if s.starts_with("claude") || s.starts_with("anthropic") => "claude".to_string(),
-        _ => String::new(),
+        s if s.starts_with("sidecar") || s.starts_with("langchain") => "sidecar".to_string(),
+        s if s.starts_with("ollama") => "ollama".to_string(),
+        _ => "sidecar".to_string(),
     }
 }
 
@@ -147,6 +149,9 @@ pub fn get_engine_api_key(cfg: &AppConfig, id: &str) -> String {
     if let Some(ec) = cfg.engines.get(id) {
         // Check global env var for provider type
         let provider = infer_provider(id, ec);
+        if provider == "sidecar" || provider == "langchain" || provider == "ollama" {
+            return if ec.api_key.is_empty() { "local".to_string() } else { resolve_api_key(&ec.api_key) };
+        }
         let env_override = match provider.as_str() {
             "openai" => std::env::var("OPENAI_API_KEY").unwrap_or_default(),
             "gemini" => std::env::var("GEMINI_API_KEY").unwrap_or_default(),
@@ -173,6 +178,8 @@ pub fn get_engine_model(cfg: &AppConfig, id: &str) -> String {
             "openai" => DEFAULT_OPENAI_MODEL.into(),
             "gemini" => DEFAULT_GEMINI_MODEL.into(),
             "claude" => DEFAULT_CLAUDE_MODEL.into(),
+            "ollama" => "llama3.2".into(),
+            "sidecar" | "langchain" => DEFAULT_GEMINI_MODEL.into(),
             _ => String::new(),
         };
     }

@@ -4,6 +4,8 @@
 pub mod claude;
 pub mod gemini;
 pub mod openai;
+pub mod sidecar;
+
 
 use crate::models::{Chunk, LlmRequest};
 use std::collections::HashMap;
